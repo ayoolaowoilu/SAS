@@ -1,65 +1,180 @@
-import Image from "next/image";
+"use client"
+import { motion } from 'framer-motion';
+import Navbar from './components/navbar';
 
-export default function Home() {
+export default function SASLandingPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+   <div>
+      <Navbar />
+        <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#ffffff',
+        padding: '2rem',
+        textAlign: 'center',
+        fontFamily:
+          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+      }}
+    >
+      {/* Logo */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+        style={{
+          marginBottom: '2rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.75rem',
+        }}
+      >
+        <SASLogo />
+        <span
+          style={{
+            fontSize: '1.5rem',
+            fontWeight: 700,
+            color: '#000000',
+            letterSpacing: '-0.02em',
+          }}
+        >
+          SAS
+        </span>
+      </motion.div>
+
+      {/* Headline */}
+      <motion.h1
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
+        style={{
+          fontSize: '3.5rem',
+          fontWeight: 800,
+          color: '#000000',
+          marginBottom: '1rem',
+          lineHeight: 1.1,
+          letterSpacing: '-0.03em',
+        }}
+      >
+        Smart Attendance System
+      </motion.h1>
+
+      {/* Subheadline */}
+      <motion.p
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' }}
+        style={{
+          fontSize: '1.25rem',
+          color: '#555555',
+          maxWidth: '560px',
+          marginBottom: '2.5rem',
+          lineHeight: 1.6,
+        }}
+      >
+        Effortless, accurate, and real-time attendance tracking. Built for modern
+        teams, classrooms, and organizations.
+      </motion.p>
+
+      {/* CTA Button */}
+      <motion.button
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, delay: 0.45, ease: 'easeOut' }}
+        whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)' }}
+        whileTap={{ scale: 0.97 }}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1rem 2.5rem',
+          backgroundColor: '#000000',
+          color: '#ffffff',
+          fontSize: '1rem',
+          fontWeight: 600,
+          borderRadius: '0.5rem',
+          border: 'none',
+          cursor: 'pointer',
+        }}
+        onClick={() => alert('Get Started clicked!')}
+      >
+        Get Started
+      </motion.button>
+
+      {/* Feature Pills */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.6, ease: 'easeOut' }}
+        style={{
+          display: 'flex',
+          gap: '1rem',
+          marginTop: '3rem',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+        }}
+      >
+        {['Real-time Tracking', 'Instant Reports', 'Secure & Reliable'].map(
+          (text, i) => (
+            <motion.span
+              key={text}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.7 + i * 0.1 }}
+              style={{
+                padding: '0.5rem 1rem',
+                border: '1px solid #e5e5e5',
+                borderRadius: '9999px',
+                fontSize: '0.875rem',
+                color: '#333333',
+                backgroundColor: '#fafafa',
+              }}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+              {text}
+            </motion.span>
+          )
+        )}
+      </motion.div>
     </div>
+   </div>
+  );
+}
+
+export function SASLogo() {
+  return (
+    <motion.svg
+      width="48"
+      height="48"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      initial={{ rotate: -10, opacity: 0 }}
+      animate={{ rotate: 0, opacity: 1 }}
+      transition={{ duration: 0.6, ease: 'easeOut' }}
+      whileHover={{ rotate: 10, scale: 1.1 }}
+      style={{ color: '#000000' }}
+    >
+      {/* Fingerprint-style attendance icon */}
+      <path d="M12 2a10 10 0 0 1 10 10" />
+      <path d="M12 2a10 10 0 0 0-10 10" />
+      <path d="M12 6a6 6 0 0 1 6 6" />
+      <path d="M12 6a6 6 0 0 0-6 6" />
+      <path d="M12 10a2 2 0 0 1 2 2" />
+      <path d="M12 10a2 2 0 0 0-2 2" />
+      <circle cx="12" cy="14" r="1" fill="currentColor" stroke="none" />
+      <motion.path
+        d="M8 22l4-4 4 4"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.8, delay: 0.5, ease: 'easeInOut' }}
+      />
+    </motion.svg>
   );
 }
