@@ -70,7 +70,6 @@ function downloadSession(session: Session) {
   URL.revokeObjectURL(url);
 }
 
-/* ──────────────────────────── Session Row ──────────────────────────── */
 
 function SessionRow({
   session,
