@@ -33,7 +33,7 @@ async function save(data: any): Promise<number> {
   })
 }
 
-async function get(id: number): Promise<any | undefined> {
+async function get(id: any): Promise<any | undefined> {
   const db = await openDB()
   const tx = db.transaction(STORE_NAME, 'readonly')
   const store = tx.objectStore(STORE_NAME)

@@ -48,14 +48,6 @@ function formatDateTime(timestamp: number): string {
   });
 }
 
-function generateClassKey(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const suffix = Array.from({ length: 6 }, () =>
-    chars.charAt(Math.floor(Math.random() * chars.length))
-  ).join('');
-  return suffix;
-}
-
 function downloadSession(session: Session) {
   const data = {
     id: session.id,
@@ -274,6 +266,16 @@ function SessionRow({
 /* ──────────────────────────── Main Page ──────────────────────────── */
 
 export default function StartSessionPage() {
+    
+const  generateClassKey = useMemo((): string=> {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const suffix = Array.from({ length: 6 }, () =>
+    chars.charAt(Math.floor(Math.random() * chars.length))
+  ).join('');
+  return suffix;
+},[])
+
+
   const router = useRouter();
 
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -350,7 +352,7 @@ export default function StartSessionPage() {
       const durationMs = parseInt(durationMinutes) * 60 * 1000 || 1000 * 60 * 60;
       const classKey = useCustomKey && customClassKey.trim()
         ? customClassKey.trim().toUpperCase()
-        : generateClassKey();
+        : generateClassKey;
 
       const newSession: Session = {
         id: classKey,
@@ -717,7 +719,7 @@ export default function StartSessionPage() {
                       letterSpacing: '0.03em',
                     }}
                   >
-                    {generateClassKey()}
+                    {generateClassKey}
                   </span>
                 </div>
               )}
