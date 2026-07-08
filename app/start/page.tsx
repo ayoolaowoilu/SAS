@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/navbar';
 import { redirect } from 'next/navigation';
+import { addRedisData } from '../lib/redis';
 
 interface Session {
   id: string;
@@ -73,16 +74,6 @@ const dummySessions: Session[] = [
 
 
 
-function generateClassKey(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const prefix = Array.from({ length: 3 }, () =>
-    chars.slice(0, 26).charAt(Math.floor(Math.random() * 26))
-  ).join('');
-  const suffix = Array.from({ length: 6 }, () =>
-    chars.charAt(Math.floor(Math.random() * chars.length))
-  ).join('');
-  return `${prefix}-${suffix}`;
-}
 
 function formatDuration(ms: number): string {
   const hours = Math.floor(ms / (1000 * 60 * 60));
@@ -341,6 +332,18 @@ function SessionRow({
 
 
 export default function StartSessionPage() {
+    const  generateClassKey=useMemo((): string=> {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+//   const prefix = Array.from({ length: 3 }, () =>
+//     chars.slice(0, 26).charAt(Math.floor(Math.random() * 26))
+//   ).join('');
+  const suffix = Array.from({ length: 6 }, () =>
+    chars.charAt(Math.floor(Math.random() * chars.length))
+  ).join('');
+  return `${suffix}`;
+}
+,[]);
+
   const [sessions, setSessions] = useState<Session[]>(dummySessions);
   const [sessionName, setSessionName] = useState('');
   const [durationMinutes, setDurationMinutes] = useState('');
@@ -362,16 +365,16 @@ export default function StartSessionPage() {
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const handleStartSession = () => {
+  const handleStartSession =async () => {
     if (!sessionName.trim()) return;
 
     const durationMs = parseInt(durationMinutes) * 60 * 1000 || 1000 * 60 * 60;
     const classKey = useCustomKey && customClassKey.trim()
       ? customClassKey.trim().toUpperCase()
-      : generateClassKey();
+      : generateClassKey;
 
     const newSession: Session = {
-      id: editingSessionId || Date.now().toString(),
+      id:generateClassKey,
       name: sessionName.trim(),
       startedAt: Date.now(),
       durationMs,
@@ -380,31 +383,19 @@ export default function StartSessionPage() {
       status: 'active',
       classKey,
     };
+
+  addRedisData(newSession, generateClassKey , durationMs / 1000);
     const myRooms = localStorage.getItem('mySession');
     if(!myRooms){
-        localStorage.setItem('mySession', JSON.stringify([newSession.id]));
+        localStorage.setItem('mySession', JSON.stringify([generateClassKey]));
     } else {
         const sessions = JSON.parse(myRooms);
-        sessions.push(newSession);
+        sessions.push(generateClassKey);
         localStorage.setItem('mySession', JSON.stringify(sessions));
     }
-    redirect(`/session/${newSession.id}`);
+    redirect(`/session/${generateClassKey}`);
 
-    if (editingSessionId) {
-      setSessions((prev) =>
-        prev.map((s) => (s.id === editingSessionId ? { ...newSession, attended: s.attended, status: s.status } : s))
-      );
-    } else {
-      setSessions([newSession, ...sessions]);
-    }
-
-    // Reset
-    setSessionName('');
-    setDurationMinutes('');
-    setExpectedParticipants('');
-    setCustomClassKey('');
-    setUseCustomKey(false);
-    setEditingSessionId(null);
+  
   };
 
   const handleCancelEdit = () => {
@@ -453,7 +444,7 @@ export default function StartSessionPage() {
           </p>
         </motion.div>
 
-        {/* ─── Start Session Form ─── */}
+      
         <motion.div
           ref={formRef}
           initial={{ opacity: 0, y: 16 }}
@@ -695,7 +686,7 @@ export default function StartSessionPage() {
                     letterSpacing: '0.03em',
                   }}
                 >
-                  {generateClassKey()}
+                  {generateClassKey}
                 </span>
               </div>
             )}
