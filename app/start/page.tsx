@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/navbar';
+import { redirect } from 'next/navigation';
 
 interface Session {
   id: string;
@@ -379,6 +380,15 @@ export default function StartSessionPage() {
       status: 'active',
       classKey,
     };
+    const myRooms = localStorage.getItem('mySession');
+    if(!myRooms){
+        localStorage.setItem('mySession', JSON.stringify([newSession.id]));
+    } else {
+        const sessions = JSON.parse(myRooms);
+        sessions.push(newSession);
+        localStorage.setItem('mySession', JSON.stringify(sessions));
+    }
+    redirect(`/session/${newSession.id}`);
 
     if (editingSessionId) {
       setSessions((prev) =>
