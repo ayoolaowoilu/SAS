@@ -5,26 +5,40 @@ const redis = new Redis({
   token: process.env.REDIS_TOKEN,
 })
 
-function addRedisData(data: unknown, key: string, ttlSeconds: number = 3600): void {
-  const stringifiedData = typeof data === 'string' ? data : JSON.stringify(data)
-  const keyName = 'sas:' + key
-  redis.set(keyName, stringifiedData, { ex: ttlSeconds })
-    .catch(err =>{
-         console.log("Redis set error:", err)
-        return {error:"Failed to create session"}} )
-  console.log("Cache set for key:", keyName)
+async function addRedisData(data: unknown, key: string, ttlSeconds: number = 3600): Promise<{ error: string } | null> {
+  try {
+    const stringifiedData = typeof data === 'string' ? data : JSON.stringify(data)
+    const keyName = 'sas:' + key
+    await redis.set(keyName, stringifiedData, { ex: ttlSeconds })
+    console.log("Cache set for key:", keyName)
+    return null
+  } catch (err) {
+    console.error("Redis set error:", err)
+    return { error: "Failed to create session" }
+  }
 }
 
-function getRedisData(key: string): Promise<unknown> {
-  const keyName = 'sas:' + key
-  console.log("Cache hit attempt for:", keyName)
-  return redis.get(keyName)
+async function getRedisData(key: string): Promise<unknown> {
+  try {
+    const keyName = 'sas:' + key
+    console.log("Cache hit attempt for:", keyName)
+    return await redis.get(keyName)
+  } catch (err) {
+    console.error("Redis get error:", err)
+    return null
+  }
 }
 
-function deleteRedisData(key: string): void {
-  const keyName = 'sas:' + key
-  redis.del(keyName)
-    .catch(err => console.error("Redis del error:", err))
+async function deleteRedisData(key: string): Promise<{ error: string } | null> {
+  try {
+    const keyName = 'sas:' + key
+    await redis.del(keyName)
+    console.log("Cache deleted for key:", keyName)
+    return null
+  } catch (err) {
+    console.error("Redis del error:", err)
+    return { error: "Failed to delete session" }
+  }
 }
 
 export { addRedisData, getRedisData, deleteRedisData }
