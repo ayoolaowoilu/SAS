@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/navbar';
-import { redirect, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { addRedisData } from '../lib/redis';
-import { getAll, save, remove } from '../lib/indexdb';
+import { getAll, save, get, remove } from '../lib/indexdb';
 
 interface Session {
   id: string;
@@ -16,6 +16,13 @@ interface Session {
   attended: number;
   status: 'active' | 'ended';
   classKey: string;
+}
+
+interface Attendee {
+  name: string;
+  regNo: string;
+  checkedInAt: number;
+  id: string;
 }
 
 /* ──────────────────────────── Helpers ──────────────────────────── */
@@ -48,37 +55,160 @@ function formatDateTime(timestamp: number): string {
   });
 }
 
-function downloadSession(session: Session) {
+/* ─── PDF Download Helper ─── */
+async function downloadAttendancePDF(session: Session, attendees: Attendee[]) {
+  try {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF();
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    let y = margin;
+
+    // Title
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.text("Attendance Report", pageWidth / 2, y, { align: "center" });
+    y += 12;
+
+    // Session Info
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    const infoLines = [
+      `Session Name: ${session.name}`,
+      `Class Key: ${session.classKey}`,
+      `Date: ${formatDateTime(session.startedAt)}`,
+      `Duration: ${formatDuration(session.durationMs)}`,
+      `Expected: ${session.expected}`,
+      `Attended: ${attendees.length}`,
+      `Attendance Rate: ${session.expected > 0 ? Math.round((attendees.length / session.expected) * 100) : 0}%`,
+      `Status: ${session.status}`,
+    ];
+    infoLines.forEach((line) => {
+      doc.text(line, margin, y);
+      y += 6;
+    });
+    y += 8;
+
+    // Attendee Table Header
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Attendees", margin, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margin, y - 5, pageWidth - margin * 2, 8, "F");
+    doc.text("#", margin + 3, y);
+    doc.text("Name", margin + 20, y);
+    doc.text("Reg No", margin + 80, y);
+    doc.text("Check-in Time", margin + 130, y);
+    y += 8;
+
+    // Attendee Rows
+    doc.setFont("helvetica", "normal");
+    attendees.forEach((attendee, index) => {
+      if (y > doc.internal.pageSize.getHeight() - margin) {
+        doc.addPage();
+        y = margin + 10;
+      }
+      doc.text(String(index + 1), margin + 3, y);
+      doc.text(attendee.name, margin + 20, y);
+      doc.text(attendee.regNo, margin + 80, y);
+      doc.text(formatDateTime(attendee.checkedInAt), margin + 130, y);
+      y += 6;
+    });
+
+    doc.save(`${session.name.replace(/\s+/g, "_")}_attendance.pdf`);
+  } catch (err) {
+    console.error("[StartPage] PDF download error:", err);
+    alert("Failed to generate PDF. Make sure jspdf is installed: npm install jspdf");
+  }
+}
+
+/* ─── JSON Download Helper ─── */
+function downloadAttendanceJSON(session: Session, attendees: Attendee[]) {
   const data = {
-    id: session.id,
-    name: session.name,
-    startedAt: new Date(session.startedAt).toISOString(),
-    duration: formatDuration(session.durationMs),
-    durationMs: session.durationMs,
-    expected: session.expected,
-    attended: session.attended,
-    status: session.status,
-    classKey: session.classKey,
-    attendanceRate: `${Math.round((session.attended / session.expected) * 100)}%`,
+    session: {
+      id: session.id,
+      name: session.name,
+      startedAt: new Date(session.startedAt).toISOString(),
+      duration: formatDuration(session.durationMs),
+      durationMs: session.durationMs,
+      expected: session.expected,
+      attended: attendees.length,
+      status: session.status,
+      classKey: session.classKey,
+      attendanceRate: `${session.expected > 0 ? Math.round((attendees.length / session.expected) * 100) : 0}%`,
+    },
+    attendees: attendees.map((a, i) => ({
+      serialNo: i + 1,
+      name: a.name,
+      regNo: a.regNo,
+      checkedInAt: new Date(a.checkedInAt).toISOString(),
+      id: a.id,
+    })),
+    generatedAt: new Date().toISOString(),
   };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
-  a.download = `${session.name.replace(/\s+/g, '_')}_session.json`;
+  a.download = `${session.name.replace(/\s+/g, "_")}_attendance.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
+/* ─── Get attendees for a session from IndexedDB ─── */
+async function getAttendeesFromIndexedDB(classKey: string): Promise<Attendee[]> {
+  try {
+    const attendeeKey = `${classKey}:attendees`;
+    const data = await get(attendeeKey);
+
+    // The IndexedDB get() might return the raw data or wrapped object
+    // Handle both formats
+    if (!data) return [];
+
+    // If it's an array directly (how session page stores it)
+    if (Array.isArray(data)) {
+      return data as Attendee[];
+    }
+
+    // If it's a wrapped object with attendees array
+    if (typeof data === 'object' && data !== null && 'attendees' in data && Array.isArray((data as any).attendees)) {
+      return (data as any).attendees as Attendee[];
+    }
+
+    return [];
+  } catch (err) {
+    console.error(`[StartPage] Failed to get attendees for ${classKey}:`, err);
+    return [];
+  }
+}
+
+/* ─── Save attendees for a session to IndexedDB ─── */
+async function saveAttendeesToIndexedDB(classKey: string, attendees: Attendee[]): Promise<void> {
+  try {
+    const attendeeKey = `${classKey}:attendees`;
+    // Store as wrapped object with id for IndexedDB compatibility
+    await save({ id: attendeeKey, attendees, classKey });
+  } catch (err) {
+    console.error(`[StartPage] Failed to save attendees for ${classKey}:`, err);
+  }
+}
 
 function SessionRow({
   session,
   index,
   onClick,
+  onDownloadPDF,
+  onDownloadJSON,
 }: {
   session: Session;
   index: number;
   onClick: (session: Session) => void;
+  onDownloadPDF: (session: Session) => void;
+  onDownloadJSON: (session: Session) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -89,9 +219,14 @@ function SessionRow({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleDownload = (e: React.MouseEvent) => {
+  const handleDownloadJSON = (e: React.MouseEvent) => {
     e.stopPropagation();
-    downloadSession(session);
+    onDownloadJSON(session);
+  };
+
+  const handleDownloadPDF = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDownloadPDF(session);
   };
 
   return (
@@ -120,7 +255,7 @@ function SessionRow({
           flexShrink: 0,
         }}
       />
-      <div style={{ minWidth: '160px', flex: '2 1 160px' }}>
+      <div style={{ minWidth: '140px', flex: '2 1 140px' }}>
         <div
           style={{
             fontSize: '0.88rem',
@@ -137,13 +272,13 @@ function SessionRow({
           {formatDateTime(session.startedAt)}
         </div>
       </div>
-      <div style={{ minWidth: '70px', flex: '0 0 70px', textAlign: 'center' }}>
+      <div style={{ minWidth: '60px', flex: '0 0 60px', textAlign: 'center' }}>
         <div style={{ fontSize: '0.8rem', fontWeight: 500, color: '#333333' }}>
           {formatDuration(session.durationMs)}
         </div>
         <div style={{ fontSize: '0.68rem', color: '#aaaaaa' }}>duration</div>
       </div>
-      <div style={{ minWidth: '80px', flex: '0 0 80px', textAlign: 'center' }}>
+      <div style={{ minWidth: '70px', flex: '0 0 70px', textAlign: 'center' }}>
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#000000' }}>
           {session.attended}
           <span style={{ color: '#aaaaaa', fontWeight: 400 }}>/{session.expected}</span>
@@ -152,8 +287,8 @@ function SessionRow({
       </div>
       <div
         style={{
-          minWidth: '130px',
-          flex: '0 0 130px',
+          minWidth: '110px',
+          flex: '0 0 110px',
           display: 'flex',
           alignItems: 'center',
           gap: '0.375rem',
@@ -225,18 +360,43 @@ function SessionRow({
       </div>
       <div
         style={{
-          minWidth: '80px',
-          flex: '0 0 80px',
+          minWidth: '70px',
+          flex: '0 0 70px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
-          gap: '0.375rem',
+          gap: '0.25rem',
         }}
       >
+        {/* PDF Download */}
         <motion.button
-          onClick={handleDownload}
+          onClick={handleDownloadPDF}
           whileTap={{ scale: 0.9 }}
-          title="Download session data"
+          title="Download attendance PDF"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '0.35rem',
+            color: '#888888',
+            display: 'flex',
+            alignItems: 'center',
+            borderRadius: '0.25rem',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+          </svg>
+        </motion.button>
+        {/* JSON Download */}
+        <motion.button
+          onClick={handleDownloadJSON}
+          whileTap={{ scale: 0.9 }}
+          title="Download attendance JSON"
           style={{
             background: 'none',
             border: 'none',
@@ -265,7 +425,7 @@ function SessionRow({
 /* ──────────────────────────── Main Page ──────────────────────────── */
 
 export default function StartSessionPage() {
-    
+
 const  generateClassKey = useMemo((): string=> {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const suffix = Array.from({ length: 6 }, () =>
@@ -304,11 +464,27 @@ const  generateClassKey = useMemo((): string=> {
       try {
         const data = await getAll();
         if (!cancelled) {
-          // IndexedDB getAll returns array of all stored objects
+          // Filter only session objects (not attendee storage objects)
           const parsed: Session[] = Array.isArray(data)
-            ? data.filter((item): item is Session => item && typeof item === 'object' && 'id' in item)
+            ? data.filter((item): item is Session => 
+                item && 
+                typeof item === 'object' && 
+                'id' in item && 
+                'classKey' in item &&
+                'name' in item &&
+                !('attendees' in item)  // Exclude attendee storage objects
+              )
             : [];
-          setSessions(parsed);
+
+          // Sync attendee counts from IndexedDB for each session
+          const sessionsWithCounts = await Promise.all(
+            parsed.map(async (sess) => {
+              const attendees = await getAttendeesFromIndexedDB(sess.classKey);
+              return { ...sess, attended: attendees.length };
+            })
+          );
+
+          setSessions(sessionsWithCounts);
         }
       } catch (err) {
         if (!cancelled) {
@@ -322,6 +498,18 @@ const  generateClassKey = useMemo((): string=> {
 
     loadSessions();
     return () => { cancelled = true; };
+  }, []);
+
+  /* ── Handle PDF Download from start page ── */
+  const handleDownloadPDF = useCallback(async (session: Session) => {
+    const attendees = await getAttendeesFromIndexedDB(session.classKey);
+    await downloadAttendancePDF(session, attendees);
+  }, []);
+
+  /* ── Handle JSON Download from start page ── */
+  const handleDownloadJSON = useCallback(async (session: Session) => {
+    const attendees = await getAttendeesFromIndexedDB(session.classKey);
+    downloadAttendanceJSON(session, attendees);
   }, []);
 
   const handleSessionClick = (session: Session) => {
@@ -382,10 +570,16 @@ const  generateClassKey = useMemo((): string=> {
         await save(newSession);
       } catch (dbErr) {
         console.error('IndexedDB save error:', dbErr);
-        // Don't block — session is in Redis, just warn
       }
 
+      // ── 3. Initialize empty attendee list in IndexedDB ──
+      try {
+        await saveAttendeesToIndexedDB(classKey, []);
+      } catch (err) {
+        console.error('IndexedDB attendee init error:', err);
+      }
 
+      // ── 4. Save classKey to mySession localStorage ──
       const myRooms = localStorage.getItem('mySession');
       if (!myRooms) {
         localStorage.setItem('mySession', JSON.stringify([classKey]));
@@ -401,7 +595,7 @@ const  generateClassKey = useMemo((): string=> {
         }
       }
 
-      // ── 4. Update UI ──
+      // ── 5. Update UI ──
       setSessions((prev) => [newSession, ...prev]);
       setSubmitSuccess(true);
 
@@ -413,7 +607,7 @@ const  generateClassKey = useMemo((): string=> {
       setUseCustomKey(false);
       setEditingSessionId(null);
 
-      // ── 5. Navigate ──
+      // ── 6. Navigate ──
       router.push(`/session/${classKey}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
@@ -432,6 +626,30 @@ const  generateClassKey = useMemo((): string=> {
     setEditingSessionId(null);
     setSubmitError(null);
     setSubmitSuccess(false);
+  };
+
+  // Manual refresh - re-syncs attendee counts from IndexedDB
+  const handleRefreshSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const updatedSessions = await Promise.all(
+        sessions.map(async (sess) => {
+          const attendees = await getAttendeesFromIndexedDB(sess.classKey);
+          if (attendees.length !== sess.attended) {
+            const updated = { ...sess, attended: attendees.length };
+            // Sync back to IndexedDB
+            try { await save(updated); } catch (e) { /* ignore */ }
+            return updated;
+          }
+          return sess;
+        })
+      );
+      setSessions(updatedSessions);
+    } catch (err) {
+      console.error('Refresh error:', err);
+    } finally {
+      setSessionsLoading(false);
+    }
   };
 
 
@@ -879,9 +1097,34 @@ const  generateClassKey = useMemo((): string=> {
               <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#000000' }}>
                 Previous Sessions
               </h2>
-              <span style={{ fontSize: '0.8rem', color: '#aaaaaa' }}>
-                {sessions.length} total
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <motion.button
+                  onClick={handleRefreshSessions}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  disabled={sessionsLoading}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: sessionsLoading ? 'not-allowed' : 'pointer',
+                    padding: '0.35rem',
+                    color: '#888888',
+                    display: 'flex',
+                    alignItems: 'center',
+                    opacity: sessionsLoading ? 0.5 : 1,
+                  }}
+                  title="Refresh from local storage"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </motion.button>
+                <span style={{ fontSize: '0.8rem', color: '#aaaaaa' }}>
+                  {sessions.length} total
+                </span>
+              </div>
             </div>
 
             {/* Loading State */}
@@ -945,19 +1188,19 @@ const  generateClassKey = useMemo((): string=> {
                   }}
                 >
                   <div style={{ width: '8px', flexShrink: 0 }} />
-                  <div style={{ minWidth: '160px', flex: '2 1 160px', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ minWidth: '140px', flex: '2 1 140px', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Session
                   </div>
-                  <div style={{ minWidth: '70px', flex: '0 0 70px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ minWidth: '60px', flex: '0 0 60px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Duration
                   </div>
-                  <div style={{ minWidth: '80px', flex: '0 0 80px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ minWidth: '70px', flex: '0 0 70px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Attendance
                   </div>
-                  <div style={{ minWidth: '130px', flex: '0 0 130px', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ minWidth: '110px', flex: '0 0 110px', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Class Key
                   </div>
-                  <div style={{ minWidth: '80px', flex: '0 0 80px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ minWidth: '70px', flex: '0 0 70px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Actions
                   </div>
                 </div>
@@ -970,6 +1213,8 @@ const  generateClassKey = useMemo((): string=> {
                         session={session}
                         index={index}
                         onClick={handleSessionClick}
+                        onDownloadPDF={handleDownloadPDF}
+                        onDownloadJSON={handleDownloadJSON}
                       />
                     ))}
                   </AnimatePresence>
