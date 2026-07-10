@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "../../components/navbar";
 import { getRedisData, addRedisData } from "../../lib/redis";
-import { get, save } from "../../lib/indexdb";
+import { saveAttendees, getAttendees, saveSession, getSession } from "../../lib/indexdb";
 
 /* ──────────────────────────── Types ──────────────────────────── */
 
@@ -155,33 +155,6 @@ function downloadAttendanceJSON(session: Session, attendees: Attendee[]) {
   a.download = `${session.name.replace(/\s+/g, "_")}_attendance.json`;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-/* ─── Save attendees to IndexedDB ─── */
-async function saveAttendeesToIndexedDB(classKey: string, attendees: Attendee[]): Promise<void> {
-  try {
-    const attendeeKey = `${classKey}:attendees`;
-    await save({ id: attendeeKey, attendees, classKey });
-  } catch (err) {
-    console.error(`[SessionPage] Failed to save attendees to IndexedDB:`, err);
-  }
-}
-
-/* ─── Get attendees from IndexedDB ─── */
-async function getAttendeesFromIndexedDB(classKey: string): Promise<Attendee[]> {
-  try {
-    const attendeeKey = `${classKey}:attendees`;
-    const data = await get(attendeeKey);
-    if (!data) return [];
-    if (Array.isArray(data)) return data as Attendee[];
-    if (typeof data === 'object' && data !== null && 'attendees' in data && Array.isArray((data as any).attendees)) {
-      return (data as any).attendees as Attendee[];
-    }
-    return [];
-  } catch (err) {
-    console.error(`[SessionPage] Failed to get attendees from IndexedDB:`, err);
-    return [];
-  }
 }
 
 /* ──────────────────────────── No Session Popup ──────────────────────────── */
@@ -694,8 +667,8 @@ export default function SessionPage() {
       if (!data) {
         // Fallback to IndexedDB
         try {
-          const localData = await get(classKey);
-          if (localData && typeof localData === "object" && "id" in localData) return localData as Session;
+          const localData = await getSession(classKey);
+          if (localData) return localData as Session;
         } catch { /* ignore */ }
         return null;
       }
@@ -710,42 +683,53 @@ export default function SessionPage() {
     }
   }, [classKey]);
 
-  /* ── Fetch attendees from IndexedDB (primary) + Redis (backup) ── */
+  /* ── Fetch attendees from Redis (PRIMARY) with IndexedDB fallback ── */
   const fetchAttendees = useCallback(async (): Promise<Attendee[]> => {
     if (!classKey) return [];
 
-    // Try IndexedDB first
-    const localAttendees = await getAttendeesFromIndexedDB(classKey);
-    if (localAttendees.length > 0) return localAttendees;
-
-    // Fallback to Redis
+    // Try Redis FIRST for cross-device sync
     try {
       const data = await getRedisData(`${classKey}:attendees`);
-      if (!data) return [];
-      let parsed: unknown;
-      if (typeof data === "string") { try { parsed = JSON.parse(data); } catch { return []; } }
-      else { parsed = data; }
-      if (Array.isArray(parsed)) return parsed as Attendee[];
-      if (parsed && typeof parsed === "object" && "attendees" in parsed && Array.isArray((parsed as any).attendees)) {
-        return (parsed as any).attendees as Attendee[];
+      if (data) {
+        let parsed: unknown;
+        if (typeof data === "string") { 
+          try { parsed = JSON.parse(data); } catch { parsed = data; } 
+        } else { 
+          parsed = data; 
+        }
+        
+        let redisAttendees: Attendee[] = [];
+        if (Array.isArray(parsed)) {
+          redisAttendees = parsed as Attendee[];
+        } else if (parsed && typeof parsed === "object" && "attendees" in parsed && Array.isArray((parsed as any).attendees)) {
+          redisAttendees = (parsed as any).attendees as Attendee[];
+        }
+        
+        // If we got valid attendees from Redis, sync to IndexedDB and return
+        if (redisAttendees.length > 0) {
+          await saveAttendees(classKey, redisAttendees);
+          return redisAttendees;
+        }
       }
-      return [];
     } catch (err) {
-      console.error("[Session] Fetch attendees error:", err);
-      return [];
+      console.error("[Session] Fetch attendees from Redis error:", err);
     }
+
+    // Fallback to IndexedDB
+    return await getAttendees(classKey);
   }, [classKey]);
 
   /* ── Save attendees to both Redis AND IndexedDB ── */
-  const saveAttendees = useCallback(async (newAttendees: Attendee[]) => {
+  const saveAttendeesToBoth = useCallback(async (newAttendees: Attendee[]) => {
     if (!classKey) return;
 
     // Save to IndexedDB (primary local storage)
-    await saveAttendeesToIndexedDB(classKey, newAttendees);
+    await saveAttendees(classKey, newAttendees);
 
-    // Save to Redis (for cross-device sync)
+    // Save to Redis (for cross-device sync) - wrap in object with attendees array
     try {
-      await addRedisData(newAttendees, `${classKey}:attendees`, 86400 * 7);
+      const payload = { attendees: newAttendees, classKey, updatedAt: Date.now() };
+      await addRedisData(payload, `${classKey}:attendees`, 86400 * 7);
     } catch (err) {
       console.error("[Session] Redis save attendees error:", err);
     }
@@ -772,19 +756,69 @@ export default function SessionPage() {
     return () => { cancelled = true; };
   }, [fetchSession, fetchAttendees, checkIsManager, checkHasCheckedIn]);
 
-  /* ── Polling (every 5s) - reads from IndexedDB primarily ── */
+  /* ── Polling every 3s - reads from Redis primarily ── */
   useEffect(() => {
     if (noSession || !session || isPollingRef.current) return;
     isPollingRef.current = true;
+    
     pollIntervalRef.current = setInterval(async () => {
-      const atts = await getAttendeesFromIndexedDB(classKey);
-      setAttendees(atts);
-      // Also refresh session status from Redis
-      const sess = await fetchSession();
-      if (sess) setSession(sess);
-    }, 5000);
+      try {
+        // Fetch attendees from Redis first (for cross-device sync)
+        const redisData = await getRedisData(`${classKey}:attendees`);
+        let redisAttendees: Attendee[] = [];
+        
+        if (redisData) {
+          let parsed: unknown;
+          if (typeof redisData === "string") { 
+            try { parsed = JSON.parse(redisData); } catch { parsed = redisData; } 
+          } else { 
+            parsed = redisData; 
+          }
+          
+          if (Array.isArray(parsed)) {
+            redisAttendees = parsed as Attendee[];
+          } else if (parsed && typeof parsed === "object" && "attendees" in parsed && Array.isArray((parsed as any).attendees)) {
+            redisAttendees = (parsed as any).attendees as Attendee[];
+          }
+        }
+        
+        // Merge with local IndexedDB data (in case Redis is empty but local has data)
+        const localAttendees = await getAttendees(classKey);
+        
+        // Use Redis data if available and non-empty, otherwise use local
+        const finalAttendees = redisAttendees.length > 0 ? redisAttendees : localAttendees;
+        
+        setAttendees(prev => {
+          // Only update if different to prevent unnecessary re-renders
+          const prevJson = JSON.stringify(prev);
+          const newJson = JSON.stringify(finalAttendees);
+          return prevJson !== newJson ? finalAttendees : prev;
+        });
+        
+        // Also refresh session status from Redis
+        const sess = await fetchSession();
+        if (sess) {
+          setSession(prev => {
+            const prevJson = JSON.stringify(prev);
+            const newJson = JSON.stringify(sess);
+            return prevJson !== newJson ? sess : prev;
+          });
+        }
+        
+        // Sync Redis data back to IndexedDB for offline resilience
+        if (redisAttendees.length > 0) {
+          await saveAttendees(classKey, redisAttendees);
+        }
+      } catch (err) {
+        console.error("[Session] Polling error:", err);
+      }
+    }, 3000); // 3 seconds as requested
+    
     return () => {
-      if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+      if (pollIntervalRef.current) { 
+        clearInterval(pollIntervalRef.current); 
+        pollIntervalRef.current = null; 
+      }
       isPollingRef.current = false;
     };
   }, [noSession, session, classKey, fetchSession]);
@@ -795,18 +829,45 @@ export default function SessionPage() {
     setCheckingIn(true);
     setCheckInError(null);
     try {
-      const currentAttendees = await getAttendeesFromIndexedDB(classKey);
+      // Always read latest from Redis first to avoid conflicts
+      const redisData = await getRedisData(`${classKey}:attendees`);
+      let currentAttendees: Attendee[] = [];
+      
+      if (redisData) {
+        let parsed: unknown;
+        if (typeof redisData === "string") { 
+          try { parsed = JSON.parse(redisData); } catch { parsed = redisData; } 
+        } else { 
+          parsed = redisData; 
+        }
+        
+        if (Array.isArray(parsed)) {
+          currentAttendees = parsed as Attendee[];
+        } else if (parsed && typeof parsed === "object" && "attendees" in parsed && Array.isArray((parsed as any).attendees)) {
+          currentAttendees = (parsed as any).attendees as Attendee[];
+        }
+      } else {
+        // Fallback to IndexedDB if Redis is empty
+        currentAttendees = await getAttendees(classKey);
+      }
+      
       const alreadyExists = currentAttendees.some((a) => a.regNo.toUpperCase() === regNo.toUpperCase());
       if (alreadyExists) {
         setCheckInError("Someone with this registration number has already checked in.");
         setCheckingIn(false);
         return;
       }
-      const newAttendee: Attendee = { name, regNo: regNo.toUpperCase(), checkedInAt: Date.now(), id: generateAttendeeId() };
+      
+      const newAttendee: Attendee = { 
+        name, 
+        regNo: regNo.toUpperCase(), 
+        checkedInAt: Date.now(), 
+        id: generateAttendeeId() 
+      };
       const updatedAttendees = [...currentAttendees, newAttendee];
 
       // Save to both IndexedDB and Redis
-      await saveAttendees(updatedAttendees);
+      await saveAttendeesToBoth(updatedAttendees);
 
       setAttendees(updatedAttendees);
       if (typeof window !== "undefined") {
@@ -825,7 +886,7 @@ export default function SessionPage() {
     } finally {
       setCheckingIn(false);
     }
-  }, [session, classKey, saveAttendees]);
+  }, [session, classKey, saveAttendeesToBoth]);
 
   /* ── Handle End Session ── */
   const handleEndSession = useCallback(async () => {
@@ -834,7 +895,7 @@ export default function SessionPage() {
     try {
       const updatedSession: Session = { ...session, status: "ended" };
       await addRedisData(updatedSession, classKey, Math.floor(session.durationMs / 1000));
-      try { await save(updatedSession); } catch (err) { console.error("[Session] IndexedDB backup error:", err); }
+      try { await saveSession(updatedSession); } catch (err) { console.error("[Session] IndexedDB backup error:", err); }
       setSession(updatedSession);
     } catch (err) {
       console.error("[Session] End session error:", err);
