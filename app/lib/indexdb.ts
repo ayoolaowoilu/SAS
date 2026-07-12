@@ -1,190 +1,188 @@
-const DB_NAME = 'myApp'
-const DB_VERSION = 2  // Bumped for new stores
+/* ──────────────────────────── IndexedDB Library ──────────────────────────── */
+/* Primary storage for ALL session data. No Redis looping. Redis is only used 
+   for cross-device sync (fire-and-forget). All reads come from IndexedDB. */
 
-/* ─── Open DB with two stores ─── */
+const DB_NAME = "AttendanceDB";
+const DB_VERSION = 1;
+const SESSION_STORE = "sessions";
+const ATTENDEES_STORE = "attendees";
+
+interface DBSession {
+  classKey: string;
+  data: string; // JSON stringified Session
+  updatedAt: number;
+}
+
+interface DBAttendees {
+  classKey: string;
+  data: string; // JSON stringified Attendee[]
+  updatedAt: number;
+}
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-      const db = (event.target as IDBOpenDBRequest).result
-      
-      // Sessions store (for session metadata)
-      if (!db.objectStoreNames.contains('sessions')) {
-        db.createObjectStore('sessions')
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+
+      // Sessions store
+      if (!db.objectStoreNames.contains(SESSION_STORE)) {
+        const sessionStore = db.createObjectStore(SESSION_STORE, { keyPath: "classKey" });
+        sessionStore.createIndex("updatedAt", "updatedAt", { unique: false });
       }
-      
-      // Attendees store (for attendee lists per classKey)
-      if (!db.objectStoreNames.contains('attendees')) {
-        db.createObjectStore('attendees')
+
+      // Attendees store
+      if (!db.objectStoreNames.contains(ATTENDEES_STORE)) {
+        const attendeeStore = db.createObjectStore(ATTENDEES_STORE, { keyPath: "classKey" });
+        attendeeStore.createIndex("updatedAt", "updatedAt", { unique: false });
       }
-    }
-
-    request.onsuccess = () => resolve(request.result as IDBDatabase)
-    request.onerror = () => reject(request.error)
-  })
+    };
+  });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   SESSIONS STORE
-   ═══════════════════════════════════════════════════════════════ */
+/* ─── Session Operations ─── */
 
-async function saveSession(data: any): Promise<void> {
-  const db = await openDB()
-  const tx = db.transaction('sessions', 'readwrite')
-  const store = tx.objectStore('sessions')
-  
+export async function saveSession(session: { classKey: string; [key: string]: unknown }): Promise<void> {
+  const db = await openDB();
   return new Promise((resolve, reject) => {
-    const request = store.put(data, data.id)  // ✅ put = upsert
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
-  })
+    const tx = db.transaction(SESSION_STORE, "readwrite");
+    const store = tx.objectStore(SESSION_STORE);
+
+    const record: DBSession = {
+      classKey: session.classKey,
+      data: JSON.stringify(session),
+      updatedAt: Date.now(),
+    };
+
+    const request = store.put(record);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => db.close();
+  });
 }
 
-async function getSession(id: string): Promise<any | undefined> {
-  const db = await openDB()
-  const tx = db.transaction('sessions', 'readonly')
-  const store = tx.objectStore('sessions')
-  
+export async function getSession(classKey: string): Promise<Record<string, unknown> | null> {
+  const db = await openDB();
   return new Promise((resolve, reject) => {
-    const request = store.get(id)  // ✅ get = returns VALUE
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
+    const tx = db.transaction(SESSION_STORE, "readonly");
+    const store = tx.objectStore(SESSION_STORE);
+    const request = store.get(classKey);
 
-async function getAllSessions(): Promise<any[]> {
-  const db = await openDB()
-  const tx = db.transaction('sessions', 'readonly')
-  const store = tx.objectStore('sessions')
-  
-  return new Promise((resolve, reject) => {
-    const request = store.getAll()
-    request.onsuccess = () => resolve(request.result || [])
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function removeSession(id: string): Promise<void> {
-  const db = await openDB()
-  const tx = db.transaction('sessions', 'readwrite')
-  const store = tx.objectStore('sessions')
-  
-  return new Promise((resolve, reject) => {
-    const request = store.delete(id)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
-  })
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   ATTENDEES STORE
-   ═══════════════════════════════════════════════════════════════ */
-
-async function saveAttendees(classKey: string, attendees: any[]): Promise<void> {
-  const db = await openDB()
-  const tx = db.transaction('attendees', 'readwrite')
-  const store = tx.objectStore('attendees')
-  
-  const payload = {
-    id: `${classKey}:attendees`,
-    classKey,
-    attendees,
-    updatedAt: Date.now()
-  }
-  
-  return new Promise((resolve, reject) => {
-    const request = store.put(payload, payload.id)  // ✅ put = upsert
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function getAttendees(classKey: string): Promise<any[]> {
-  const db = await openDB()
-  const tx = db.transaction('attendees', 'readonly')
-  const store = tx.objectStore('attendees')
-  
-  return new Promise((resolve, reject) => {
-    const request = store.get(`${classKey}:attendees`)  // ✅ get = returns VALUE
     request.onsuccess = () => {
-      const result = request.result
-      if (!result) return resolve([])
-      if (Array.isArray(result.attendees)) return resolve(result.attendees)
-      if (Array.isArray(result)) return resolve(result)
-      resolve([])
-    }
-    request.onerror = () => reject(request.error)
-  })
+      const result = request.result as DBSession | undefined;
+      if (!result) {
+        resolve(null);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(result.data);
+        resolve(parsed);
+      } catch {
+        resolve(null);
+      }
+    };
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => db.close();
+  });
 }
 
-async function getAllAttendees(): Promise<any[]> {
-  const db = await openDB()
-  const tx = db.transaction('attendees', 'readonly')
-  const store = tx.objectStore('attendees')
-  
+export async function getAllSessions(): Promise<Array<Record<string, unknown> & { classKey: string; attended: number }>> {
+  const db = await openDB();
   return new Promise((resolve, reject) => {
-    const request = store.getAll()
-    request.onsuccess = () => resolve(request.result || [])
-    request.onerror = () => reject(request.error)
-  })
+    const tx = db.transaction(SESSION_STORE, "readonly");
+    const store = tx.objectStore(SESSION_STORE);
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+      const results = request.result as DBSession[];
+      const sessions = results
+        .map((r) => {
+          try {
+            return JSON.parse(r.data);
+          } catch {
+            return null;
+          }
+        })
+        .filter((s): s is Record<string, unknown> & { classKey: string; attended: number } => s !== null);
+      resolve(sessions);
+    };
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => db.close();
+  });
 }
 
-async function removeAttendees(classKey: string): Promise<void> {
-  const db = await openDB()
-  const tx = db.transaction('attendees', 'readwrite')
-  const store = tx.objectStore('attendees')
-  
+export async function deleteSession(classKey: string): Promise<void> {
+  const db = await openDB();
   return new Promise((resolve, reject) => {
-    const request = store.delete(`${classKey}:attendees`)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
-  })
+    const tx = db.transaction(SESSION_STORE, "readwrite");
+    const store = tx.objectStore(SESSION_STORE);
+    const request = store.delete(classKey);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => db.close();
+  });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   BACKWARD COMPATIBILITY (old API)
-   ═══════════════════════════════════════════════════════════════ */
+/* ─── Attendees Operations ─── */
 
-async function save(data: any): Promise<void> {
-  // Route to correct store based on data shape
-  if ('attendees' in data && !('name' in data)) {
-    return saveAttendees(data.classKey, data.attendees)
-  }
-  return saveSession(data)
+export async function saveAttendees(classKey: string, attendees: Array<Record<string, unknown>>): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ATTENDEES_STORE, "readwrite");
+    const store = tx.objectStore(ATTENDEES_STORE);
+
+    const record: DBAttendees = {
+      classKey,
+      data: JSON.stringify(attendees),
+      updatedAt: Date.now(),
+    };
+
+    const request = store.put(record);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => db.close();
+  });
 }
 
-async function get(id: string): Promise<any | undefined> {
-  // Try attendees first, then sessions
-  const attendees = await getAttendees(id.replace(':attendees', ''))
-  if (attendees.length > 0) return attendees
-  
-  return getSession(id)
+export async function getAttendees(classKey: string): Promise<Array<Record<string, unknown>>> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ATTENDEES_STORE, "readonly");
+    const store = tx.objectStore(ATTENDEES_STORE);
+    const request = store.get(classKey);
+
+    request.onsuccess = () => {
+      const result = request.result as DBAttendees | undefined;
+      if (!result) {
+        resolve([]);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(result.data);
+        resolve(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        resolve([]);
+      }
+    };
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => db.close();
+  });
 }
 
-async function getAll(): Promise<any[]> {
-  const sessions = await getAllSessions()
-  return sessions
-}
+export async function deleteAttendees(classKey: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ATTENDEES_STORE, "readwrite");
+    const store = tx.objectStore(ATTENDEES_STORE);
+    const request = store.delete(classKey);
 
-async function remove(id: string): Promise<void> {
-  await removeSession(id)
-  await removeAttendees(id)
-}
-
-export {
-  // New explicit API
-  saveSession,
-  getSession,
-  getAllSessions,
-  removeSession,
-  saveAttendees,
-  getAttendees,
-  getAllAttendees,
-  removeAttendees,
-  // Old API (backward compatible)
-  save,
-  get,
-  getAll,
-  remove
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => db.close();
+  });
 }
