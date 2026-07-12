@@ -100,7 +100,7 @@ export default function SASLandingPage() {
           border: 'none',
           cursor: 'pointer',
         }}
-        onClick={() => alert('Get Started clicked!')}
+        onClick={() => window.location.href = '/start'}
       >
         Get Started
       </motion.button>
@@ -118,7 +118,7 @@ export default function SASLandingPage() {
           justifyContent: 'center',
         }}
       >
-        {['Real-time Tracking', 'Instant Reports', 'Secure & Reliable'].map(
+        {['Real-time Tracking', 'Instant PDF Reports', 'Secure & Reliable' , 'Easy Integration'].map(
           (text, i) => (
             <motion.span
               key={text}
