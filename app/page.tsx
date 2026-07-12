@@ -63,7 +63,7 @@ export default function SASLandingPage() {
         Smart Attendance System
       </motion.h1>
 
-      {/* Subheadline */}
+
       <motion.p
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

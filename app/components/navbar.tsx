@@ -7,10 +7,11 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navLinks = [
-    { label: 'Features', href: '#features' },
-    { label: 'Pricing', href: '#pricing' },
-    { label: 'Docs', href: '#docs' },
-    { label: 'Contact', href: '#contact' },
+    { label: 'Features', href: '/features' },
+    { label: 'Start session', href: '/start' },
+    { label: 'join session', href: '/join-session' },
+    { label: 'Docs', href: '/docs' },
+    { label: 'Contact', href: '/contact' },
   ];
 
   return (
@@ -233,7 +234,7 @@ export default function Navbar() {
   );
 }
 
-/* ──────────────────────────── Logo ──────────────────────────── */
+
 
 export function SASLogo() {
   return (
