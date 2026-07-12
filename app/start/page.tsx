@@ -407,8 +407,8 @@ export default function StartPage() {
     try {
       const sessions = await getAllSessions();
       // Sort by startedAt desc
-      sessions.sort((a, b) => b.startedAt - a.startedAt);
-      setMySessions(sessions);
+      sessions.sort((a:any, b:any) => b.startedAt - a.startedAt);
+      setMySessions(sessions as any);
     } catch (err) {
       console.error("[Start] Load sessions error:", err);
     } finally {

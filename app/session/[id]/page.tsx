@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "../../components/navbar";
 import { getRedisData, addRedisData } from "../../lib/redis";
-import { saveAttendees, getAttendees, saveSession, getSession } from "../../lib/indexdb";
+import {  saveSession, getSession, deleteSession } from "../../lib/indexdb";
 
 /* ──────────────────────────── Types ──────────────────────────── */
 
@@ -27,7 +27,7 @@ interface Attendee {
   id: string;
 }
 
-/* ──────────────────────────── Helpers ──────────────────────────── */
+
 
 function formatDuration(ms: number): string {
   const hours = Math.floor(ms / (1000 * 60 * 60));
@@ -157,7 +157,7 @@ function downloadAttendanceJSON(session: Session, attendees: Attendee[]) {
   URL.revokeObjectURL(url);
 }
 
-/* ──────────────────────────── No Session Popup ──────────────────────────── */
+
 
 function NoSessionPopup({ onGoHome }: { onGoHome: () => void }) {
   return (
@@ -233,7 +233,6 @@ function NoSessionPopup({ onGoHome }: { onGoHome: () => void }) {
   );
 }
 
-/* ──────────────────────────── Manager View ──────────────────────────── */
 
 function ManagerView({
   session,
@@ -489,7 +488,6 @@ function ManagerView({
   );
 }
 
-/* ──────────────────────────── Attendee View ──────────────────────────── */
 
 function AttendeeView({
   session,
@@ -615,7 +613,7 @@ function AttendeeView({
   );
 }
 
-/* ──────────────────────────── Main Page ──────────────────────────── */
+
 
 export default function SessionPage() {
   const params = useParams();
@@ -648,7 +646,6 @@ export default function SessionPage() {
     } catch { return false; }
   }, [classKey]);
 
-  /* ── Check if user already checked in ── */
   const checkHasCheckedIn = useCallback(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -659,14 +656,15 @@ export default function SessionPage() {
     } catch { return false; }
   }, [classKey]);
 
-  /* ── Fetch session from IndexedDB (PRIMARY) with Redis fallback ── */
+
   const fetchSession = useCallback(async (): Promise<Session | null> => {
     if (!classKey) return null;
+   
 
-    // Try IndexedDB FIRST - primary storage
+   
     try {
-      const localData = await getSession(classKey);
-      if (localData) return localData as Session;
+      const localData:any = await getSession(classKey);
+      if (localData) return localData as Session
     } catch (err) {
       console.error("[Session] Fetch session from IndexedDB error:", err);
     }
@@ -684,9 +682,11 @@ export default function SessionPage() {
       }
 
       if (parsed && typeof parsed === "object" && "id" in parsed) {
-        const sessionData = parsed as Session;
-        // Save to IndexedDB for future offline access
-        try { await saveSession(sessionData); } catch { /* ignore */ }
+        const sessionData:any = parsed as Session;
+    
+        try { await saveSession(sessionData); } catch(error) {
+          console.log(error)
+         }
         return sessionData;
       }
       return null;
@@ -696,23 +696,27 @@ export default function SessionPage() {
     }
   }, [classKey]);
 
-  /* ── Fetch attendees from IndexedDB (PRIMARY) ── */
+  
   const fetchAttendees = useCallback(async (): Promise<Attendee[]> => {
     if (!classKey) return [];
+     if(!checkIsManager()) return [];
 
-    // IndexedDB is the primary source - no Redis polling needed for attendees
+   
     try {
-      const localAttendees = await getAttendees(classKey);
-      return localAttendees;
+      const localAttendees:any = await getSession(classKey)
+      console.log(JSON.parse(localAttendees).attended)
+      return JSON.parse(localAttendees).attended;
+
     } catch (err) {
       console.error("[Session] Fetch attendees from IndexedDB error:", err);
       return [];
     }
   }, [classKey]);
 
-  /* ── Sync attendees FROM Redis to IndexedDB (one-way, on demand) ── */
+ 
   const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
     if (!classKey) return [];
+     if(!checkIsManager()) return [];
 
     try {
       const redisData = await getRedisData(`${classKey}:attendees`);
@@ -734,8 +738,25 @@ export default function SessionPage() {
 
       if (redisAttendees.length > 0) {
         // Save Redis data to IndexedDB
-        await saveAttendees(classKey, redisAttendees);
-        return redisAttendees;
+          const LocalAttended:any = await getSession(classKey);
+            let parsedLocalAttended;
+            let newAttendees;
+
+            try{
+                parsedLocalAttended = LocalAttended.attended
+            }catch{
+               
+                parsedLocalAttended = JSON.parse(LocalAttended).attended;
+            }
+
+            if (parsedLocalAttended.length > 0 ){
+                    newAttendees = [...parsedLocalAttended , ...redisAttendees]
+            }else{
+               newAttendees = redisAttendees;
+            }
+             await deleteSession(classKey)
+             const session = await fetchSession();
+           await saveSession({...session , attended:newAttendees});
       }
       return [];
     } catch (err) {
@@ -744,14 +765,14 @@ export default function SessionPage() {
     }
   }, [classKey]);
 
-  /* ── Save attendees to IndexedDB (PRIMARY) and Redis (sync only) ── */
+
   const saveAttendeesToBoth = useCallback(async (newAttendees: Attendee[]) => {
     if (!classKey) return;
 
-    // Save to IndexedDB FIRST (primary local storage)
-    await saveAttendees(classKey, newAttendees);
+    // // Save to IndexedDB FIRST (primary local storage)
+    // await saveAttendees(classKey, newAttendees);
 
-    // Save to Redis (for cross-device sync) - fire and forget
+    // // Save to Redis (for cross-device sync) - fire and forget
     try {
       const payload = { attendees: newAttendees, classKey, updatedAt: Date.now() };
       await addRedisData(payload, `${classKey}:attendees`, 86400 * 7);
@@ -775,8 +796,7 @@ export default function SessionPage() {
       setIsManager(checkIsManager());
       setHasCheckedIn(checkHasCheckedIn());
 
-      // For manager: sync from Redis first, then get from IndexedDB
-      // For attendee: just get from IndexedDB
+
       const isUserManager = checkIsManager();
       if (isUserManager) {
         await syncAttendeesFromRedis();
@@ -805,9 +825,17 @@ export default function SessionPage() {
     pollIntervalRef.current = setInterval(async () => {
       try {
         // Always read from IndexedDB first (fast, no network)
-        const localAttendees = await getAttendees(classKey);
+        let localAttendees:any;
+        const session_data:any = 
+            await getSession(classKey);
+         
+        try{
+             localAttendees = session_data.attended
+        }catch{
+             localAttendees  = JSON.parse(session_data).attended
+        }
 
-        setAttendees(prev => {
+        setAttendees((prev:any) => {
           const prevJson = JSON.stringify(prev);
           const newJson = JSON.stringify(localAttendees);
           return prevJson !== newJson ? localAttendees : prev;
@@ -832,7 +860,7 @@ export default function SessionPage() {
         // Refresh session status from IndexedDB
         const sess = await getSession(classKey);
         if (sess) {
-          setSession(prev => {
+          setSession((prev:any) => {
             const prevJson = JSON.stringify(prev);
             const newJson = JSON.stringify(sess);
             return prevJson !== newJson ? sess : prev;
@@ -860,9 +888,19 @@ export default function SessionPage() {
 
     try {
       // Read latest from IndexedDB (primary source)
-      const currentAttendees = await getAttendees(classKey);
 
-      const alreadyExists = currentAttendees.some((a) => a.regNo.toUpperCase() === regNo.toUpperCase());
+         let currentAttendees:any;
+        const session_data:any = 
+            await getSession(classKey);
+         
+        try{
+             currentAttendees = session_data.attended
+        }catch{
+             currentAttendees = JSON.parse(session_data).attended
+        }
+      
+
+      const alreadyExists = currentAttendees.some((a:any) => a.regNo.toUpperCase() === regNo.toUpperCase());
       if (alreadyExists) {
         setCheckInError("Someone with this registration number has already checked in.");
         setCheckingIn(false);

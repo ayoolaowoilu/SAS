@@ -46,7 +46,7 @@ function openDB(): Promise<IDBDatabase> {
 
 /* ─── Session Operations ─── */
 
-export async function saveSession(session: { classKey: string; [key: string]: unknown }): Promise<void> {
+export async function saveSession(session:any): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(SESSION_STORE, "readwrite");
@@ -149,30 +149,7 @@ export async function saveAttendees(classKey: string, attendees: Array<Record<st
   });
 }
 
-export async function getAttendees(classKey: string): Promise<Array<Record<string, unknown>>> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(ATTENDEES_STORE, "readonly");
-    const store = tx.objectStore(ATTENDEES_STORE);
-    const request = store.get(classKey);
 
-    request.onsuccess = () => {
-      const result = request.result as DBAttendees | undefined;
-      if (!result) {
-        resolve([]);
-        return;
-      }
-      try {
-        const parsed = JSON.parse(result.data);
-        resolve(Array.isArray(parsed) ? parsed : []);
-      } catch {
-        resolve([]);
-      }
-    };
-    request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
-  });
-}
 
 export async function deleteAttendees(classKey: string): Promise<void> {
   const db = await openDB();
