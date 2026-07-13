@@ -90,7 +90,7 @@ export async function getSession(classKey: string): Promise<Record<string, unkno
   });
 }
 
-export async function getAllSessions(): Promise<Array<Record<string, unknown> & { classKey: string; attended: number }>> {
+export async function getAllSessions():Promise<any> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(SESSION_STORE, "readonly");

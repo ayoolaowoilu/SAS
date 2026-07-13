@@ -15,7 +15,7 @@ interface Session {
   startedAt: number;
   durationMs: number;
   expected: number;
-  attended: number;
+  attended: any;
   status: "active" | "ended";
   classKey: string;
 }
@@ -48,8 +48,6 @@ function generateClassKey(): string {
   }
   return result;
 }
-
-/* ──────────────────────────── Create Session Form ──────────────────────────── */
 
 function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
   const router = useRouter();
@@ -116,6 +114,7 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
       style={{ border: "1px solid #f0f0f0", borderRadius: "0.875rem", padding: "1.5rem", backgroundColor: "#ffffff" }}
+      className="text-black"
     >
       <h2 style={{ margin: "0 0 1.25rem 0", fontSize: "1.1rem", fontWeight: 700, color: "#000000" }}>Create New Session</h2>
 
@@ -196,7 +195,7 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-/* ──────────────────────────── Join Session Form ──────────────────────────── */
+
 
 function JoinSessionForm() {
   const router = useRouter();
@@ -314,7 +313,7 @@ function JoinSessionForm() {
   );
 }
 
-/* ──────────────────────────── Session Card ──────────────────────────── */
+
 
 function SessionCard({ session, onDelete }: { session: Session; onDelete: (key: string) => void }) {
   const router = useRouter();
@@ -371,7 +370,7 @@ function SessionCard({ session, onDelete }: { session: Session; onDelete: (key: 
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
         <div style={{ textAlign: "center", padding: "0.5rem", backgroundColor: "#fafafa", borderRadius: "0.5rem" }}>
-          <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#000000" }}>{session.attended}</div>
+          <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#000000" }}>{session.attended.length || 0}</div>
           <div style={{ fontSize: "0.68rem", color: "#888888" }}>Attended</div>
         </div>
         <div style={{ textAlign: "center", padding: "0.5rem", backgroundColor: "#fafafa", borderRadius: "0.5rem" }}>
@@ -395,7 +394,6 @@ function SessionCard({ session, onDelete }: { session: Session; onDelete: (key: 
   );
 }
 
-/* ──────────────────────────── Main Page ──────────────────────────── */
 
 export default function StartPage() {
   const [mySessions, setMySessions] = useState<Session[]>([]);
@@ -441,7 +439,7 @@ export default function StartPage() {
   }, []);
 
   return (
-    <div>
+    <div className="text-black">
       <Navbar />
       <div style={{ minHeight: "100vh", backgroundColor: "#ffffff", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif", padding: "2rem 1rem", paddingTop: "96px" }}>
         <div style={{ maxWidth: "900px", margin: "0 auto" }}>
@@ -453,10 +451,10 @@ export default function StartPage() {
             <p style={{ margin: 0, fontSize: "0.9rem", color: "#888888" }}>Create or join a session to track attendance.</p>
           </motion.div>
 
-          {/* Forms Grid */}
+         
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem", marginBottom: "3rem" }}>
             <CreateSessionForm onCreated={loadSessions} />
-            <JoinSessionForm />
+    
           </div>
 
           {/* My Sessions */}

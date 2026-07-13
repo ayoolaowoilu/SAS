@@ -704,8 +704,8 @@ export default function SessionPage() {
    
     try {
       const localAttendees:any = await getSession(classKey)
-      console.log(JSON.parse(localAttendees).attended)
-      return JSON.parse(localAttendees).attended;
+      console.log(localAttendees.attended)
+      return localAttendees.attended;
 
     } catch (err) {
       console.error("[Session] Fetch attendees from IndexedDB error:", err);
@@ -965,7 +965,7 @@ export default function SessionPage() {
     }
   }, [session, classKey]);
 
-  /* ── Render ── */
+
   return (
     <div>
       <Navbar />
