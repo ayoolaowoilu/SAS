@@ -284,7 +284,7 @@ export default function FeaturesPage() {
             </p>
             <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
               <motion.button
-                onClick={() => router.push("/")}
+                onClick={() => router.push("/start")}
                 whileHover={{ scale: 1.02, y: -1 }}
                 whileTap={{ scale: 0.98 }}
                 style={{
@@ -308,7 +308,7 @@ export default function FeaturesPage() {
                 Create Session
               </motion.button>
               <motion.button
-                onClick={() => router.push("/join")}
+                onClick={() => router.push("/join-session")}
                 whileHover={{ scale: 1.02, y: -1 }}
                 whileTap={{ scale: 0.98 }}
                 style={{
