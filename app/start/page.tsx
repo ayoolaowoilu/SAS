@@ -4,10 +4,10 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "../components/navbar";
-import { addRedisData } from "../lib/redis";
-import { saveSession, getAllSessions, deleteSession } from "../lib/indexdb";
+import { addRedisData, getRedisData } from "../lib/redis";
+import { saveSession, getAllSessions, deleteSession, getSession } from "../lib/indexdb";
 
-/* ──────────────────────────── Types ──────────────────────────── */
+
 
 interface Session {
   id: string;
@@ -15,7 +15,7 @@ interface Session {
   startedAt: number;
   durationMs: number;
   expected: number;
-  attended: any;
+  attended: any[]; // Attendee[] array to match session/[id] page
   status: "active" | "ended";
   classKey: string;
 }
@@ -49,6 +49,7 @@ function generateClassKey(): string {
   return result;
 }
 
+/* ─── Create Session Form ─── */
 function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -71,22 +72,22 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
         startedAt: Date.now(),
         durationMs,
         expected: Math.max(1, expected),
-        attended: 0,
+        attended: [],
         status: "active",
         classKey,
       };
 
-      // Save to IndexedDB FIRST (primary storage)
+      // 1. Save to IndexedDB FIRST (primary storage)
       await saveSession(session);
 
-      // Sync to Redis (fire and forget)
+      // 2. Sync to Redis (fire-and-forget for cross-device)
       try {
         await addRedisData(session, classKey, Math.floor(durationMs / 1000));
       } catch (err) {
         console.error("[Start] Redis sync error:", err);
       }
 
-      // Track this session as "my session" (manager)
+      // 3. Track this session as "my session" (manager)
       if (typeof window !== "undefined") {
         const mySessions = localStorage.getItem("mySession");
         let sessionList: string[] = [];
@@ -195,8 +196,7 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-
-
+/* ─── Join Session Form ─── */
 function JoinSessionForm() {
   const router = useRouter();
   const [classKey, setClassKey] = useState("");
@@ -212,8 +212,7 @@ function JoinSessionForm() {
     setError(null);
 
     try {
-      // Check if session exists in IndexedDB first (fast, no network)
-      const { getSession } = await import("../lib/indexdb");
+      // 1. Check IndexedDB first (fast, no network)
       const localSession = await getSession(key);
 
       if (localSession) {
@@ -221,8 +220,7 @@ function JoinSessionForm() {
         return;
       }
 
-      // If not found locally, try Redis once
-      const { getRedisData } = await import("../lib/redis");
+      // 2. If not found locally, try Redis once
       const redisData = await getRedisData(key);
 
       if (redisData) {
@@ -313,11 +311,11 @@ function JoinSessionForm() {
   );
 }
 
-
-
+/* ─── Session Card ─── */
 function SessionCard({ session, onDelete }: { session: Session; onDelete: (key: string) => void }) {
   const router = useRouter();
-  const attendanceRate = session.expected > 0 ? Math.round((session.attended / session.expected) * 100) : 0;
+  const attendedCount = Array.isArray(session.attended) ? session.attended.length : (session.attended || 0);
+  const attendanceRate = session.expected > 0 ? Math.round((attendedCount / session.expected) * 100) : 0;
   const isEnded = session.status === "ended";
   const endAt = session.startedAt + session.durationMs;
   const isExpired = !isEnded && Date.now() > endAt;
@@ -370,7 +368,7 @@ function SessionCard({ session, onDelete }: { session: Session; onDelete: (key: 
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
         <div style={{ textAlign: "center", padding: "0.5rem", backgroundColor: "#fafafa", borderRadius: "0.5rem" }}>
-          <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#000000" }}>{session.attended.length || 0}</div>
+          <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#000000" }}>{attendedCount}</div>
           <div style={{ fontSize: "0.68rem", color: "#888888" }}>Attended</div>
         </div>
         <div style={{ textAlign: "center", padding: "0.5rem", backgroundColor: "#fafafa", borderRadius: "0.5rem" }}>
@@ -388,13 +386,22 @@ function SessionCard({ session, onDelete }: { session: Session; onDelete: (key: 
           <span style={{ fontSize: "0.72rem", color: "#888888" }}>Key:</span>
           <span style={{ fontSize: "0.82rem", fontWeight: 700, fontFamily: "monospace", color: "#000000", letterSpacing: "0.05em" }}>{session.classKey}</span>
         </div>
-        <span style={{ fontSize: "0.72rem", color: "#aaaaaa" }}>{formatDuration(session.durationMs)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.72rem", color: "#aaaaaa" }}>{formatDuration(session.durationMs)}</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(session.classKey); }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "0.25rem", color: "#aaaaaa", display: "flex", alignItems: "center" }}
+            title="Delete session"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
       </div>
     </motion.div>
   );
 }
 
-
+/* ─── Main Page ─── */
 export default function StartPage() {
   const [mySessions, setMySessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -405,7 +412,7 @@ export default function StartPage() {
     try {
       const sessions = await getAllSessions();
       // Sort by startedAt desc
-      sessions.sort((a:any, b:any) => b.startedAt - a.startedAt);
+      sessions.sort((a: any, b: any) => b.startedAt - a.startedAt);
       setMySessions(sessions as any);
     } catch (err) {
       console.error("[Start] Load sessions error:", err);
@@ -451,13 +458,13 @@ export default function StartPage() {
             <p style={{ margin: 0, fontSize: "0.9rem", color: "#888888" }}>Create or join a session to track attendance.</p>
           </motion.div>
 
-         
+          {/* Forms */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem", marginBottom: "3rem" }}>
             <CreateSessionForm onCreated={loadSessions} />
-    
+            <JoinSessionForm />
           </div>
 
-          {/* My Sessions */}
+          {/* My Sessions History */}
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
               <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#000000" }}>My Sessions</h2>

@@ -7,7 +7,6 @@ import Navbar from "../../components/navbar";
 import { getRedisData, addRedisData } from "../../lib/redis";
 import {  saveSession, getSession, deleteSession } from "../../lib/indexdb";
 
-/* ──────────────────────────── Types ──────────────────────────── */
 
 interface Session {
   id: string;
@@ -62,7 +61,7 @@ function generateAttendeeId(): string {
   return "att_" + Math.random().toString(36).substring(2, 10);
 }
 
-/* ─── PDF Download Helper ─── */
+
 function downloadAttendancePDF(session: Session, attendees: Attendee[]) {
   const { jsPDF } = require("jspdf");
   const doc = new jsPDF();
@@ -124,7 +123,6 @@ function downloadAttendancePDF(session: Session, attendees: Attendee[]) {
   doc.save(`${session.name.replace(/\s+/g, "_")}_attendance.pdf`);
 }
 
-/* ─── JSON Download Helper ─── */
 function downloadAttendanceJSON(session: Session, attendees: Attendee[]) {
   const data = {
     session: {
