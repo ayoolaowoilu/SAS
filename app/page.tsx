@@ -16,7 +16,7 @@ export default function SASLandingPage() {
       }}>
         
         {/* Logo */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <motion.div    className="text-black" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <SASLogo />
           <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>SAS</span>
         </motion.div>
@@ -28,6 +28,7 @@ export default function SASLandingPage() {
             fontSize: 'clamp(2.5rem, 8vw, 3.5rem)', // Scales down automatically
             fontWeight: 800, marginBottom: '1rem', lineHeight: 1.1, letterSpacing: '-0.03em' 
           }}
+          className="text-black"
         >
           Smart Attendance System
         </motion.h1>
