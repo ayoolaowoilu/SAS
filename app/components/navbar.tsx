@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-/* ──────────────────────────── Navbar ──────────────────────────── */
+
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -10,7 +10,6 @@ export default function Navbar() {
     { label: 'Features', href: '/features' },
     { label: 'Start session', href: '/start' },
     { label: 'join session', href: '/join-session' },
-    { label: 'Docs', href: '/docs' },
     { label: 'Contact', href: '/contact' },
   ];
 
