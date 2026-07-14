@@ -2,39 +2,48 @@
 
 import React, { useState, useEffect } from "react";
 
+// Define the interface for the BeforeInstallPromptEvent
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+  prompt(): Promise<void>;
+}
+
+// Extend the global Window interface
+declare global {
+  interface WindowEventMap {
+    beforeinstallprompt: BeforeInstallPromptEvent;
+  }
+}
+
 export default function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showInstall, setShowInstall] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstall, setShowInstall] = useState<boolean>(false);
 
   useEffect(() => {
-    // 1. Listen for the browser's install event
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault(); // Prevent default browser mini-infobar
+    const handleBeforeInstallPrompt = (e: BeforeInstallPromptEvent) => {
+      e.preventDefault();
       setDeferredPrompt(e);
-      setShowInstall(true); // Show your custom UI
+      setShowInstall(true);
     };
 
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
     };
   }, []);
 
-  const handleInstallClick = async () => {
+  const handleInstallClick = async (): Promise<void> => {
     if (!deferredPrompt) return;
 
-    // 2. Trigger the browser's install prompt
-    deferredPrompt.prompt();
-
-    // 3. Wait for the user to respond
+    await deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     
     if (outcome === "accepted") {
       console.log("User accepted the install");
     }
 
-    // 4. Clear the deferred prompt
     setDeferredPrompt(null);
     setShowInstall(false);
   };
@@ -42,17 +51,33 @@ export default function InstallPrompt() {
   if (!showInstall) return null;
 
   return (
-    <div style={{
-      position: "fixed", bottom: "1.5rem", left: "1.5rem", zIndex: 9999,
-      backgroundColor: "#ffffff", padding: "1rem", borderRadius: "0.75rem",
-      boxShadow: "0 10px 25px rgba(0,0,0,0.1)"
-    }}>
-      <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.9rem" }}>Install SAS for a better experience?</p>
-      <button 
+    <div
+      style={{
+        position: "fixed",
+        bottom: "1.5rem",
+        left: "1.5rem",
+        zIndex: 9999,
+        backgroundColor: "#ffffff",
+        padding: "1rem",
+        borderRadius: "0.75rem",
+        boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
+        border: "1px solid #f0f0f0",
+      }}
+    >
+      <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.9rem", color: "#333" }}>
+        Install SAS for a better experience?
+      </p>
+      <button
         onClick={handleInstallClick}
         style={{
-          backgroundColor: "#000", color: "#fff", border: "none",
-          padding: "0.5rem 1rem", borderRadius: "0.5rem", cursor: "pointer"
+          backgroundColor: "#000",
+          color: "#fff",
+          border: "none",
+          padding: "0.5rem 1rem",
+          borderRadius: "0.5rem",
+          cursor: "pointer",
+          fontSize: "0.85rem",
+          fontWeight: 500,
         }}
       >
         Install App
