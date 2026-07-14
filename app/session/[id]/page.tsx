@@ -633,7 +633,6 @@ export default function SessionPage() {
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isPollingRef = useRef(false);
 
-  /* ── Check if user is manager ── */
   const checkIsManager = useCallback(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -711,6 +710,7 @@ export default function SessionPage() {
 const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
     if (!classKey) return [];
     if (!checkIsManager()) return [];
+      if(session?.status === "ended") return [];
 
     try {
       const redisData = await getRedisData(`${classKey}:attendees`);
@@ -759,6 +759,7 @@ const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
         } else if (a.checkedInAt < existing.checkedInAt) {
           mergedMap.set(key, a); // Redis has earlier check-in, use it
         }
+
         // If local is earlier, keep local (do nothing)
       }
 

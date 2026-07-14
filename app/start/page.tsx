@@ -49,7 +49,6 @@ function generateClassKey(): string {
   return result;
 }
 
-/* ─── Create Session Form ─── */
 function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -196,7 +195,7 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-/* ─── Join Session Form ─── */
+
 function JoinSessionForm() {
   const router = useRouter();
   const [classKey, setClassKey] = useState("");
@@ -311,7 +310,6 @@ function JoinSessionForm() {
   );
 }
 
-/* ─── Session Card ─── */
 function SessionCard({ session, onDelete }: { session: Session; onDelete: (key: string) => void }) {
   const router = useRouter();
   const attendedCount = Array.isArray(session.attended) ? session.attended.length : (session.attended || 0);
@@ -401,7 +399,6 @@ function SessionCard({ session, onDelete }: { session: Session; onDelete: (key: 
   );
 }
 
-/* ─── Main Page ─── */
 export default function StartPage() {
   const [mySessions, setMySessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -461,7 +458,6 @@ export default function StartPage() {
           {/* Forms */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem", marginBottom: "3rem" }}>
             <CreateSessionForm onCreated={loadSessions} />
-            <JoinSessionForm />
           </div>
 
           {/* My Sessions History */}
@@ -478,7 +474,7 @@ export default function StartPage() {
               </div>
             ) : mySessions.length === 0 ? (
               <div style={{ textAlign: "center", padding: "3rem 1rem", color: "#aaaaaa", fontSize: "0.9rem", border: "1px dashed #e5e5e5", borderRadius: "0.75rem" }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cccccc" strokeWidth="1.5" style={{ marginBottom: "0.75rem" }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cccccc" className="mx-auto" strokeWidth="1.5" style={{ marginBottom: "0.75rem" }}>
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
                   <line x1="16" y1="2" x2="16" y2="6" />
                   <line x1="8" y1="2" x2="8" y2="6" />
