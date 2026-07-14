@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Footer from "./components/footer";
+import PopupWrapper from "./components/popup-wrapper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,7 +14,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-
 export const metadata: Metadata = {
   title: "SAS - Smart Attendance System",
   description: "Effortless, accurate, and real-time attendance tracking. Built for modern teams, classrooms, and organizations.",
@@ -21,7 +21,8 @@ export const metadata: Metadata = {
     icon: "/logo.svg",
     shortcut: "/logo.svg",
     apple: "/logo.svg",
-  },  openGraph: {
+  },
+  openGraph: {
     images: ["/api/og"],
   },
   twitter: {
@@ -39,8 +40,11 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
-      <Footer />
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Footer />
+        <PopupWrapper />
+      </body>
     </html>
   );
 }
