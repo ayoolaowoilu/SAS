@@ -443,7 +443,7 @@ function ManagerView({
 
         {attendees.length === 0 ? (
           <div style={{ textAlign: "center", padding: "3rem 1rem", color: "#aaaaaa", fontSize: "0.9rem", border: "1px dashed #e5e5e5", borderRadius: "0.625rem" }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cccccc" strokeWidth="1.5" style={{ marginBottom: "0.75rem" }}>
+            <svg width="32" className="mx-auto" height="32" viewBox="0 0 24 24" fill="none" stroke="#cccccc" strokeWidth="1.5" style={{ marginBottom: "0.75rem" }}>
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
               <circle cx="9" cy="7" r="4" />
               <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -831,9 +831,8 @@ const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
     return () => { cancelled = true; };
   }, [fetchSession, fetchAttendees, syncAttendeesFromRedis, checkIsManager, checkHasCheckedIn]);
 
-  /* ── Polling: ONLY for managers, reads from IndexedDB, syncs from Redis occasionally ── */
   useEffect(() => {
-    // Only poll if user is manager AND session exists AND is active
+    
     if (noSession || !session || !isManager || isPollingRef.current) return;
 
     isPollingRef.current = true;
@@ -967,10 +966,9 @@ const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
     try {
       const updatedSession: Session = { ...session, status: "ended" };
 
-      // Save to IndexedDB FIRST
+      
       await saveSession(updatedSession);
 
-      // Sync to Redis
       try { 
         await addRedisData(updatedSession, classKey, Math.floor(session.durationMs / 1000)); 
       } catch (err) { 
