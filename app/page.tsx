@@ -1,154 +1,87 @@
-"use client"
+"use client";
 import { motion } from 'framer-motion';
-import Navbar from './components/navbar';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Navbar from './components/navbar';
 
 export default function SASLandingPage() {
+  const router = useRouter();
+
   return (
-   <div>
+    <div style={{ backgroundColor: '#ffffff', minHeight: '100vh', fontFamily: "-apple-system, sans-serif" }}>
       <Navbar />
-        <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        backgroundColor: '#ffffff',
-        padding: '2rem',
-        textAlign: 'center',
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
-      }}
-    >
-      {/* Logo */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-        style={{
-          marginBottom: '2rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.75rem',
-        }}
-      >
-        <SASLogo />
-        <span
-          style={{
-            fontSize: '1.5rem',
-            fontWeight: 700,
-            color: '#000000',
-            letterSpacing: '-0.02em',
+      <main style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        padding: '2rem 1.5rem', textAlign: 'center', maxWidth: '800px', margin: '0 auto'
+      }}>
+        
+        {/* Logo */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <SASLogo />
+          <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>SAS</span>
+        </motion.div>
+
+        {/* Responsive Headline */}
+        <motion.h1 
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          style={{ 
+            fontSize: 'clamp(2.5rem, 8vw, 3.5rem)', // Scales down automatically
+            fontWeight: 800, marginBottom: '1rem', lineHeight: 1.1, letterSpacing: '-0.03em' 
           }}
         >
-          SAS
-        </span>
-      </motion.div>
+          Smart Attendance System
+        </motion.h1>
 
-      {/* Headline */}
-      <motion.h1
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
-        style={{
-          fontSize: '3.5rem',
-          fontWeight: 800,
-          color: '#000000',
-          marginBottom: '1rem',
-          lineHeight: 1.1,
-          letterSpacing: '-0.03em',
-        }}
-      >
-        Smart Attendance System
-      </motion.h1>
+        <motion.p 
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+          style={{ fontSize: '1.1rem', color: '#555', marginBottom: '2.5rem', maxWidth: '500px' }}
+        >
+          Effortless, accurate, and real-time attendance tracking for modern teams and classrooms.
+        </motion.p>
 
+        {/* CTA Buttons */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
+          style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}
+        >
+          <Button onClick={() => router.push('/start')} primary>Get Started</Button>
+          <Button onClick={() => router.push('/join-session')}>Join Session</Button>
+          <Button onClick={() => router.push('/features')}>Features</Button>
+        </motion.div>
 
-      <motion.p
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' }}
-        style={{
-          fontSize: '1.25rem',
-          color: '#555555',
-          maxWidth: '560px',
-          marginBottom: '2.5rem',
-          lineHeight: 1.6,
-        }}
-      >
-        Effortless, accurate, and real-time attendance tracking. Built for modern
-        teams, classrooms, and organizations.
-      </motion.p>
-
-      {/* CTA Button */}
-      <motion.button
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5, delay: 0.45, ease: 'easeOut' }}
-        whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)' }}
-        whileTap={{ scale: 0.97 }}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem 2.5rem',
-          backgroundColor: '#000000',
-          color: '#ffffff',
-          fontSize: '1rem',
-          fontWeight: 600,
-          borderRadius: '0.5rem',
-          border: 'none',
-          cursor: 'pointer',
-        }}
-        onClick={() => window.location.href = '/start'}
-      >
-        Get Started
-      </motion.button>
-      
-
-      {/* Feature Pills */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.6, ease: 'easeOut' }}
-        style={{
-          display: 'flex',
-          gap: '1rem',
-          marginTop: '3rem',
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-        }}
-      >
-        {['Real-time Tracking', 'Instant PDF Reports', 'Secure & Reliable' , 'Easy Integration'].map(
-          (text, i) => (
-            <motion.span
-              key={text}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4, delay: 0.7 + i * 0.1 }}
-              style={{
-                padding: '0.5rem 1rem',
-                border: '1px solid #e5e5e5',
-                borderRadius: '9999px',
-                fontSize: '0.875rem',
-                color: '#333333',
-                backgroundColor: '#fafafa',
-              }}
-            >
+        {/* Feature Pills */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '3rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {['Real-time', 'PDF Reports', 'Secure', 'Easy Integration'].map((text) => (
+            <span key={text} style={{ padding: '0.4rem 0.8rem', border: '1px solid #e5e5e5', borderRadius: '999px', fontSize: '0.8rem', color: '#666' }}>
               {text}
-            </motion.span>
-          )
-        )}
-      </motion.div>
+            </span>
+          ))}
+        </div>
+      </main>
     </div>
-   </div>
+  );
+}
+
+// Reusable Button Component for cleaner code
+function Button({ children, onClick, primary }: { children: React.ReactNode, onClick: () => void, primary?: boolean }) {
+  return (
+    <motion.button
+      whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}
+      onClick={onClick}
+      style={{
+        padding: '0.8rem 1.5rem',
+        backgroundColor: primary ? '#000' : '#f9f9f9',
+        color: primary ? '#fff' : '#000',
+        border: primary ? 'none' : '1px solid #e5e5e5',
+        borderRadius: '0.5rem',
+        fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem'
+      }}
+    >
+      {children}
+    </motion.button>
   );
 }
 
 export function SASLogo() {
-  return (
-    <Image src="/logo.svg" alt="SAS Logo" width={48} height={48} />
-
-  );
+  return <Image src="/logo.svg" alt="SAS Logo" width={32} height={32} />;
 }
