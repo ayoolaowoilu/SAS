@@ -565,7 +565,7 @@ function AttendeeView({
             <p style={{ margin: 0, fontSize: "0.85rem", color: "#888888" }}>This session has ended. Check-in is no longer available.</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ border: "1px solid #f0f0f0", borderRadius: "0.875rem", padding: "1.5rem" }}>
+          <form onSubmit={handleSubmit} className="text-black" style={{ border: "1px solid #f0f0f0", borderRadius: "0.875rem", padding: "1.5rem" }}>
             <h3 style={{ margin: "0 0 1rem 0", fontSize: "1rem", fontWeight: 700, color: "#000000" }}>Check In</h3>
             <div style={{ marginBottom: "1rem" }}>
               <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#333333", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>Full Name</label>
@@ -655,54 +655,50 @@ export default function SessionPage() {
   }, [classKey]);
 
 
-  const fetchSession = useCallback(async (): Promise<Session | null> => {
+ const fetchSession = useCallback(async (): Promise<Session | null> => {
     if (!classKey) return null;
-   
 
-   
+    // Try Redis FIRST
     try {
-      const localData:any = await getSession(classKey);
-      if (localData) return localData as Session
+      const data = await getRedisData(classKey);
+      if (data) {
+        let parsed: unknown;
+        if (typeof data === "string") {
+          try { parsed = JSON.parse(data); } catch { parsed = data; }
+        } else {
+          parsed = data;
+        }
+
+        if (parsed && typeof parsed === "object" && "id" in parsed) {
+          const sessionData: any = parsed as Session;
+          // Cache to IndexedDB for offline future access
+          try { await saveSession(sessionData); } catch (error) { console.log(error); }
+          return sessionData;
+        }
+      }
+    } catch (err) {
+      console.error("[Session] Fetch session from Redis error:", err);
+    }
+
+    // Fallback to IndexedDB if Redis failed or returned nothing
+    try {
+      const localData: any = await getSession(classKey);
+      if (localData) return localData as Session;
     } catch (err) {
       console.error("[Session] Fetch session from IndexedDB error:", err);
     }
 
-    // Fallback to Redis only if not found locally
-    try {
-      const data = await getRedisData(classKey);
-      if (!data) return null;
-
-      let parsed: unknown;
-      if (typeof data === "string") { 
-        try { parsed = JSON.parse(data); } catch { parsed = data; } 
-      } else { 
-        parsed = data; 
-      }
-
-      if (parsed && typeof parsed === "object" && "id" in parsed) {
-        const sessionData:any = parsed as Session;
-    
-        try { await saveSession(sessionData); } catch(error) {
-          console.log(error)
-         }
-        return sessionData;
-      }
-      return null;
-    } catch (err) {
-      console.error("[Session] Fetch session from Redis error:", err);
-      return null;
-    }
+    return null;
   }, [classKey]);
-
   
   const fetchAttendees = useCallback(async (): Promise<Attendee[]> => {
     if (!classKey) return [];
      if(!checkIsManager()) return [];
+     if(session?.status === "ended") return [];
 
    
     try {
       const localAttendees:any = await getSession(classKey)
-      console.log(localAttendees.attended)
       return localAttendees.attended;
 
     } catch (err) {
@@ -712,19 +708,19 @@ export default function SessionPage() {
   }, [classKey]);
 
  
-  const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
+const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
     if (!classKey) return [];
-     if(!checkIsManager()) return [];
+    if (!checkIsManager()) return [];
 
     try {
       const redisData = await getRedisData(`${classKey}:attendees`);
       if (!redisData) return [];
 
       let parsed: unknown;
-      if (typeof redisData === "string") { 
-        try { parsed = JSON.parse(redisData); } catch { parsed = redisData; } 
-      } else { 
-        parsed = redisData; 
+      if (typeof redisData === "string") {
+        try { parsed = JSON.parse(redisData); } catch { parsed = redisData; }
+      } else {
+        parsed = redisData;
       }
 
       let redisAttendees: Attendee[] = [];
@@ -734,34 +730,59 @@ export default function SessionPage() {
         redisAttendees = (parsed as any).attendees as Attendee[];
       }
 
-      if (redisAttendees.length > 0) {
-        // Save Redis data to IndexedDB
-          const LocalAttended:any = await getSession(classKey);
-            let parsedLocalAttended;
-            let newAttendees;
+      if (redisAttendees.length === 0) return [];
 
-            try{
-                parsedLocalAttended = LocalAttended.attended
-            }catch{
-               
-                parsedLocalAttended = JSON.parse(LocalAttended).attended;
-            }
-
-            if (parsedLocalAttended.length > 0 ){
-                    newAttendees = [...parsedLocalAttended , ...redisAttendees]
-            }else{
-               newAttendees = redisAttendees;
-            }
-             await deleteSession(classKey)
-             const session = await fetchSession();
-           await saveSession({...session , attended:newAttendees});
+      // Get local attendees from IndexedDB
+      const localSession: any = await getSession(classKey);
+      let localAttendees: Attendee[] = [];
+      try {
+        localAttendees = localSession?.attended || [];
+      } catch {
+        localAttendees = JSON.parse(localSession)?.attended || [];
       }
-      return [];
+
+      // DEDUPLICATE: merge by regNo (business key), keep earliest check-in
+      const mergedMap = new Map<string, Attendee>();
+
+      // Add local attendees first
+      for (const a of localAttendees) {
+        const key = a.regNo.toUpperCase();
+        mergedMap.set(key, a);
+      }
+
+      // Add Redis attendees — if duplicate regNo, keep the one with earliest checkedInAt
+      for (const a of redisAttendees) {
+        const key = a.regNo.toUpperCase();
+        const existing = mergedMap.get(key);
+        if (!existing) {
+          mergedMap.set(key, a);
+        } else if (a.checkedInAt < existing.checkedInAt) {
+          mergedMap.set(key, a); // Redis has earlier check-in, use it
+        }
+        // If local is earlier, keep local (do nothing)
+      }
+
+      const newAttendees = Array.from(mergedMap.values());
+      // Sort by check-in time to maintain order
+      newAttendees.sort((a, b) => a.checkedInAt - b.checkedInAt);
+
+      // Only save if there are actual changes
+      const localJson = JSON.stringify(localAttendees);
+      const mergedJson = JSON.stringify(newAttendees);
+      if (localJson !== mergedJson) {
+        const session = await fetchSession();
+        if (session) {
+          await deleteSession(classKey);
+          await saveSession({ ...session, attended: newAttendees });
+        }
+      }
+
+      return newAttendees;
     } catch (err) {
       console.error("[Session] Sync attendees from Redis error:", err);
       return [];
     }
-  }, [classKey]);
+  }, [classKey, checkIsManager, fetchSession]);
 
 
   const saveAttendeesToBoth = useCallback(async (newAttendees: Attendee[]) => {
@@ -779,7 +800,7 @@ export default function SessionPage() {
     }
   }, [classKey]);
 
-  /* ── Initial Load ── */
+
   useEffect(() => {
     let cancelled = false;
     async function init() {

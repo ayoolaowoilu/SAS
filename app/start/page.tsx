@@ -15,12 +15,12 @@ interface Session {
   startedAt: number;
   durationMs: number;
   expected: number;
-  attended: any[]; // Attendee[] array to match session/[id] page
+  attended: any[]; 
   status: "active" | "ended";
   classKey: string;
 }
 
-/* ──────────────────────────── Helpers ──────────────────────────── */
+
 
 function formatDuration(ms: number): string {
   const hours = Math.floor(ms / (1000 * 60 * 60));
