@@ -204,34 +204,6 @@ export default function UpdatesPage() {
         </div>
       </div>
 
-      {/* Footer — swap for your own Footer component if you have one */}
-      <footer style={{ borderTop: "1px solid #f0f0f0", backgroundColor: "#ffffff", padding: "2rem 1rem" }}>
-        <div
-          style={{
-            maxWidth: "760px",
-            margin: "0 auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "0.75rem",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "#000000", letterSpacing: "-0.01em" }}>SAS</div>
-            <div style={{ fontSize: "0.75rem", color: "#aaaaaa", marginTop: "0.125rem" }}>Student Attendance System</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
-            <Link href="/" style={{ fontSize: "0.78rem", color: "#888888", textDecoration: "none" }}>
-              Home
-            </Link>
-            <Link href="/updates" style={{ fontSize: "0.78rem", color: "#000000", textDecoration: "none", fontWeight: 600 }}>
-              Updates
-            </Link>
-            <span style={{ fontSize: "0.78rem", color: "#cccccc" }}>© 2026 SAS</span>
-          </div>
-        </div>
-      </footer>
 
       <style>{`
         /* ── Mobile-only tuning (<=640px) — desktop untouched ── */
