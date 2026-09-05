@@ -1,17 +1,10 @@
-// Central updates feed for SAS.
-// To publish a new update: add a new entry at the TOP with a fresh `id`
-// (use the publish date, e.g. "2026-09-12"). The popup compares the stored
-// "last read" id against UPDATES[0].id, so a new id = popup shows again.
-//
-// Storage key lives here so the page and the popup always agree.
-
 export interface UpdateEntry {
-  id: string; // unique, date-based works great: "YYYY-MM-DD" (add -2 if two in a day)
-  date: string; // human-readable date shown on cards
-  tag: string; // small category chip
+  id: string; 
+  date: string; 
+  tag: string; 
   title: string;
-  summary: string; // shown on the card + in the popup
-  body: string[]; // full paragraphs, revealed with "Read more"
+  summary: string; 
+  body: string[];
 }
 
 export const UPDATE_STORAGE_KEY = "sas_last_read_update1.0";
