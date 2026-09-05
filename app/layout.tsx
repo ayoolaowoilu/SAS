@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Footer from "./components/footer";
 import PopupWrapper from "./components/popup-wrapper";
+import LatestUpdatePopup from "./components/LatestUpdatePopup";
 
 
 const geistSans = Geist({
@@ -45,6 +46,7 @@ export default function RootLayout({
         {children}
         <Footer />
         <PopupWrapper />
+        <LatestUpdatePopup />
       </body>
     </html>
   );
