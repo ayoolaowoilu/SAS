@@ -164,41 +164,6 @@ function downloadAttendancePDF(session: Session, attendees: Attendee[]) {
   doc.save(`${session.name.replace(/\s+/g, "_")}_attendance.pdf`);
 }
 
-function downloadAttendanceJSON(session: Session, attendees: Attendee[]) {
-  const fields = getFields(session);
-  const data = {
-    session: {
-      id: session.id,
-      name: session.name,
-      startedAt: new Date(session.startedAt).toISOString(),
-      duration: formatDuration(session.durationMs),
-      durationMs: session.durationMs,
-      expected: session.expected,
-      attended: attendees.length,
-      status: session.status,
-      classKey: session.classKey,
-      attendanceRate: `${session.expected > 0 ? Math.round((attendees.length / session.expected) * 100) : 0}%`,
-      fields: fields.map((f) => f.label),
-    },
-    attendees: attendees.map((a, i) => {
-      const row: Record<string, any> = { serialNo: i + 1 };
-      fields.forEach((f) => {
-        row[f.key] = a.values?.[f.key] ?? "";
-      });
-      row.checkedInAt = new Date(a.checkedInAt).toISOString();
-      row.id = a.id;
-      return row;
-    }),
-    generatedAt: new Date().toISOString(),
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${session.name.replace(/\s+/g, "_")}_attendance.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 
 function NoSessionPopup({ onGoHome }: { onGoHome: () => void }) {
@@ -307,12 +272,13 @@ function ManagerView({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+    <div className="mgr-root" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       {/* Session Header Card */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
+        className="mgr-card"
         style={{
           border: "1px solid #f0f0f0",
           borderRadius: "0.875rem",
@@ -364,7 +330,7 @@ function ManagerView({
         </div>
 
         {/* Stats Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "1rem", marginBottom: "1.25rem" }}>
+        <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "1rem", marginBottom: "1.25rem" }}>
           <div style={{ padding: "1rem", backgroundColor: "#fafafa", borderRadius: "0.625rem", textAlign: "center" }}>
             <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#000000" }}>{attendees.length}</div>
             <div style={{ fontSize: "0.72rem", color: "#888888", marginTop: "0.25rem" }}>Attended</div>
@@ -387,6 +353,7 @@ function ManagerView({
 
         {/* Class Key + Actions */}
         <div
+          className="key-bar"
           style={{
             display: "flex",
             alignItems: "center",
@@ -421,20 +388,7 @@ function ManagerView({
             </motion.button>
           </div>
 
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <motion.button
-              onClick={() => downloadAttendanceJSON(session, attendees)}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.875rem", backgroundColor: "#ffffff", color: "#333333", fontSize: "0.78rem", fontWeight: 600, borderRadius: "0.375rem", border: "1px solid #e5e5e5", cursor: "pointer" }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              JSON
-            </motion.button>
+          <div className="mgr-actions" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <motion.button
               onClick={() => downloadAttendancePDF(session, attendees)}
               whileHover={{ scale: 1.02 }}
@@ -498,7 +452,7 @@ function ManagerView({
             <div style={{ fontSize: "0.78rem", marginTop: "0.25rem" }}>Share the class key to let people check in.</div>
           </div>
         ) : (
-          <div style={{ border: "1px solid #f0f0f0", borderRadius: "0.625rem", overflow: "hidden" }}>
+          <div className="attendee-scroll" style={{ border: "1px solid #f0f0f0", borderRadius: "0.625rem", overflow: "hidden", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.625rem 1.25rem", borderBottom: "1px solid #f0f0f0", backgroundColor: "#fafafa" }}>
               <div style={{ width: "40px", fontSize: "0.7rem", fontWeight: 600, color: "#aaaaaa", textTransform: "uppercase", letterSpacing: "0.05em" }}>#</div>
               {fields.map((f) => (
@@ -739,8 +693,7 @@ export default function SessionPage() {
     } catch { return false; }
   }, [classKey]);
 
-  /* Local-first session load. Redis is only touched when nothing is cached
-     locally yet (e.g. a brand-new device joining a session). */
+ 
   const fetchSession = useCallback(async (): Promise<Session | null> => {
     if (!classKey) return null;
 
@@ -964,7 +917,7 @@ export default function SessionPage() {
   return (
     <div>
       <Navbar />
-      <div style={{ minHeight: "100vh", backgroundColor: "#ffffff", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif", padding: "2rem 1rem", paddingTop: "96px" }}>
+      <div className="page-wrap" style={{ minHeight: "100vh", backgroundColor: "#ffffff", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif", padding: "2rem 1rem", paddingTop: "96px" }}>
         <div style={{ maxWidth: isManager ? "900px" : "520px", margin: "0 auto" }}>
           {loading && (
             <div style={{ textAlign: "center", padding: "4rem 1rem", color: "#aaaaaa" }}>
@@ -992,7 +945,31 @@ export default function SessionPage() {
           )}
         </div>
       </div>
-      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
+      <style>{`
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* ── Mobile-only UI tuning (<=640px). Desktop is untouched. ── */
+        @media (max-width: 640px) {
+          .page-wrap { padding: 1rem 0.75rem !important; padding-top: 84px !important; }
+          .mgr-root { gap: 1rem !important; }
+          .mgr-card { padding: 1rem !important; }
+          .stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 0.5rem !important; margin-bottom: 0.875rem !important; }
+          .stats-grid > div { padding: 0.625rem 0.5rem !important; border-radius: 0.5rem !important; }
+          .stats-grid > div > div:first-child { font-size: 1.05rem !important; }
+          .key-bar { padding: 0.5rem 0.625rem !important; gap: 0.5rem !important; }
+          .key-bar span { font-size: 0.72rem !important; }
+          .key-bar button { padding: 0.375rem 0.625rem !important; font-size: 0.68rem !important; gap: 0.25rem !important; }
+          .mgr-actions { gap: 0.375rem !important; width: 100%; }
+
+          /* Horizontally scrollable attendees table — columns never squash */
+          .attendee-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+          .attendee-scroll > * { min-width: 560px; box-sizing: border-box; }
+          .attendee-scroll > div { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+          .attendee-scroll > div > div { font-size: 0.78rem !important; }
+          .attendee-scroll > div > div:first-child { width: 28px !important; }
+          .attendee-scroll > div > div:last-child { width: 110px !important; }
+        }
+      `}</style>
     </div>
   );
 }
