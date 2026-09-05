@@ -3,9 +3,11 @@ import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Navbar from './components/navbar';
+import { UPDATES } from './lib/update-data';
 
 export default function SASLandingPage() {
   const router = useRouter();
+  const latest = UPDATES[0];
 
   return (
     <div style={{ backgroundColor: '#ffffff', minHeight: '100vh', fontFamily: "-apple-system, sans-serif" }}>
@@ -40,6 +42,66 @@ export default function SASLandingPage() {
           Effortless, accurate, and real-time attendance tracking for modern teams and classrooms.
         </motion.p>
 
+        {/* Latest Update — always shows the newest entry from lib/updates-data.ts */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          whileHover={{ y: -2 }}
+          onClick={() => router.push('/updates')}
+          style={{
+            width: '100%',
+            maxWidth: '520px',
+            marginBottom: '2.5rem',
+            border: '1px solid #f0f0f0',
+            borderRadius: '0.875rem',
+            padding: '0.875rem 1.25rem',
+            backgroundColor: '#ffffff',
+            textAlign: 'left',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.875rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span
+            style={{
+              padding: '0.25rem 0.75rem',
+              backgroundColor: '#f0fff5',
+              borderRadius: '2rem',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              color: '#008844',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              flexShrink: 0,
+            }}
+          >
+            New
+          </span>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <div style={{ fontSize: '0.72rem', color: '#aaaaaa', marginBottom: '0.125rem' }}>
+              {latest.tag} · {latest.date}
+            </div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#000000', marginBottom: '0.125rem' }}>
+              {latest.title}
+            </div>
+            <div
+              style={{
+                fontSize: '0.78rem',
+                color: '#888888',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {latest.summary}
+            </div>
+          </div>
+          <span style={{ fontSize: '1rem', color: '#aaaaaa', flexShrink: 0 }}>→</span>
+        </motion.div>
+
         {/* CTA Buttons */}
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
@@ -59,6 +121,7 @@ export default function SASLandingPage() {
           ))}
         </div>
       </main>
+
     </div>
   );
 }
