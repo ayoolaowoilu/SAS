@@ -85,7 +85,7 @@ export default function SASLandingPage() {
               {latest.summary}
             </div>
           </div>
-          <span style={{ fontSize: '1rem', color: '#aaaaaa', flexShrink: 0 }}>→</span>
+          <span style={{ fontSize: '1rem', color: 'sky blue', flexShrink: 0 }}>Read</span>
         </motion.div>
 
         {/* CTA Buttons */}
