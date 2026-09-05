@@ -126,8 +126,6 @@ export default function SASLandingPage() {
   );
 }
 
-
-
 function Button({ children, onClick, primary }: { children: React.ReactNode, onClick: () => void, primary?: boolean }) {
   return (
     <motion.button
