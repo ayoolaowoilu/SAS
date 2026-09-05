@@ -44,49 +44,50 @@ export default function SASLandingPage() {
 
         {/* Latest Update — always shows the newest entry from lib/updates-data.ts */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          whileHover={{ y: -2 }}
-          onClick={() => router.push('/updates')}
-          style={{
-            width: '100%',
-            maxWidth: '520px',
-            marginBottom: '2.5rem',
-            border: '1px solid #f0f0f0',
-            borderRadius: '0.875rem',
-            padding: '0.875rem 1.25rem',
-            backgroundColor: '#ffffff',
-            textAlign: 'left',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.875rem',
-            flexWrap: 'wrap',
-          }}
-        >
-         
-          <div style={{ flex: 1, minWidth: '200px' }}>
-            <div style={{ fontSize: '0.72rem', color: '#aaaaaa', marginBottom: '0.125rem' }}>
-              {"Latest Update"} · {latest.date}
-            </div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#000000', marginBottom: '0.125rem' }}>
-              {latest.title}
-            </div>
-            <div
-              style={{
-                fontSize: '0.78rem',
-                color: '#888888',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {latest.summary}
-            </div>
-          </div>
-          <span style={{ fontSize: '1rem', color: 'sky blue', flexShrink: 0 }}>Read More</span>
-        </motion.div>
+  initial={{ opacity: 0, y: 20 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ delay: 0.25 }}
+  whileHover={{ y: -2 }}
+  onClick={() => router.push('/updates')}
+  style={{
+    width: '100%',
+    maxWidth: '520px',
+    marginBottom: '2.5rem',
+    border: '1px solid #f0f0f0',
+    borderRadius: '0.875rem',
+    padding: '0.875rem 1.25rem',
+    backgroundColor: '#ffffff',
+    textAlign: 'left',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.875rem',
+    flexWrap: 'wrap',
+  }}
+>
+  <div style={{ flex: 1, minWidth: '200px' }}>
+    <div style={{ fontSize: '0.72rem', color: '#aaaaaa', marginBottom: '0.125rem' }}>
+      Latest Update &middot; {latest.date}
+    </div>
+    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#000000', marginBottom: '0.125rem' }}>
+      {latest.title}
+    </div>
+    <div
+      style={{
+        fontSize: '0.78rem',
+        color: '#888888',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {latest.summary}
+    </div>
+  </div>
+  <span style={{ fontSize: '0.9rem', color: '#0ea5e9', flexShrink: 0 }}>
+    Read More
+  </span>
+</motion.div>
 
         {/* CTA Buttons */}
         <motion.div 
