@@ -7,7 +7,10 @@ import Navbar from "../components/navbar";
 import { addRedisData, getRedisData } from "../lib/redis";
 import { saveSession, getAllSessions, deleteSession, getSession } from "../lib/indexdb";
 
-
+interface FieldDef {
+  key: string;
+  label: string;
+}
 
 interface Session {
   id: string;
@@ -15,12 +18,20 @@ interface Session {
   startedAt: number;
   durationMs: number;
   expected: number;
-  attended: any[]; 
+  attended: any[];
   status: "active" | "ended";
   classKey: string;
+  fields: FieldDef[];
 }
 
-
+// Presets a manager can pick from, in addition to Name (always collected).
+// Max 3 fields total are ever collected — Name + up to 2 of these (or a custom one).
+const FIELD_PRESETS: FieldDef[] = [
+  { key: "email", label: "Email Address" },
+  { key: "regNo", label: "Registration / ID No." },
+  { key: "phone", label: "Phone Number" },
+];
+const MAX_EXTRA_FIELDS = 2;
 
 function formatDuration(ms: number): string {
   const hours = Math.floor(ms / (1000 * 60 * 60));
@@ -57,6 +68,42 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
   const [expected, setExpected] = useState(30);
   const [creating, setCreating] = useState(false);
 
+  // Check-in fields config: Name is always on. Up to 2 more from presets, or one custom field.
+  const [selectedPresets, setSelectedPresets] = useState<string[]>(["email", "regNo"]);
+  const [useCustomField, setUseCustomField] = useState(false);
+  const [customFieldLabel, setCustomFieldLabel] = useState("");
+
+  const extraCount = selectedPresets.length + (useCustomField ? 1 : 0);
+  const atMax = extraCount >= MAX_EXTRA_FIELDS;
+
+  const togglePreset = (key: string) => {
+    setSelectedPresets((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      if (prev.length + (useCustomField ? 1 : 0) >= MAX_EXTRA_FIELDS) return prev;
+      return [...prev, key];
+    });
+  };
+
+  const toggleCustom = () => {
+    setUseCustomField((prev) => {
+      if (prev) return false;
+      if (selectedPresets.length + (prev ? 1 : 0) >= MAX_EXTRA_FIELDS) return prev;
+      return true;
+    });
+  };
+
+  const buildFields = (): FieldDef[] => {
+    const fields: FieldDef[] = [{ key: "name", label: "Full Name" }];
+    selectedPresets.forEach((k) => {
+      const preset = FIELD_PRESETS.find((f) => f.key === k);
+      if (preset) fields.push(preset);
+    });
+    if (useCustomField && customFieldLabel.trim()) {
+      fields.push({ key: "custom1", label: customFieldLabel.trim() });
+    }
+    return fields.slice(0, 3);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -74,6 +121,7 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
         attended: [],
         status: "active",
         classKey,
+        fields: buildFields(),
       };
 
       // 1. Save to IndexedDB FIRST (primary storage)
@@ -107,6 +155,26 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
     }
   };
 
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "0.78rem",
+    fontWeight: 600,
+    color: "#333333",
+    marginBottom: "0.375rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.03em",
+  };
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "0.625rem 0.875rem",
+    border: "1px solid #e5e5e5",
+    borderRadius: "0.5rem",
+    fontSize: "0.9rem",
+    outline: "none",
+    boxSizing: "border-box",
+    transition: "border-color 0.2s",
+  };
+
   return (
     <motion.form
       onSubmit={handleSubmit}
@@ -119,7 +187,7 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
       <h2 style={{ margin: "0 0 1.25rem 0", fontSize: "1.1rem", fontWeight: 700, color: "#000000" }}>Create New Session</h2>
 
       <div style={{ marginBottom: "1rem" }}>
-        <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#333333", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>Session Name</label>
+        <label style={labelStyle}>Session Name</label>
         <input
           type="text"
           value={name}
@@ -127,7 +195,7 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
           placeholder="e.g. Introduction to React"
           required
           disabled={creating}
-          style={{ width: "100%", padding: "0.625rem 0.875rem", border: "1px solid #e5e5e5", borderRadius: "0.5rem", fontSize: "0.9rem", outline: "none", boxSizing: "border-box", transition: "border-color 0.2s", opacity: creating ? 0.6 : 1 }}
+          style={{ ...inputStyle, opacity: creating ? 0.6 : 1 }}
           onFocus={(e) => (e.target.style.borderColor = "#000000")}
           onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")}
         />
@@ -135,7 +203,7 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
         <div>
-          <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#333333", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>Duration (hrs)</label>
+          <label style={labelStyle}>Duration (hrs)</label>
           <input
             type="number"
             min={0}
@@ -143,11 +211,11 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
             value={durationHours}
             onChange={(e) => setDurationHours(Math.max(0, parseInt(e.target.value) || 0))}
             disabled={creating}
-            style={{ width: "100%", padding: "0.625rem 0.875rem", border: "1px solid #e5e5e5", borderRadius: "0.5rem", fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }}
+            style={inputStyle}
           />
         </div>
         <div>
-          <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#333333", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>Duration (mins)</label>
+          <label style={labelStyle}>Duration (mins)</label>
           <input
             type="number"
             min={0}
@@ -155,21 +223,75 @@ function CreateSessionForm({ onCreated }: { onCreated: () => void }) {
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
             disabled={creating}
-            style={{ width: "100%", padding: "0.625rem 0.875rem", border: "1px solid #e5e5e5", borderRadius: "0.5rem", fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }}
+            style={inputStyle}
           />
         </div>
       </div>
 
       <div style={{ marginBottom: "1.25rem" }}>
-        <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#333333", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>Expected Attendees</label>
+        <label style={labelStyle}>Expected Attendees</label>
         <input
           type="number"
           min={1}
           value={expected}
           onChange={(e) => setExpected(Math.max(1, parseInt(e.target.value) || 1))}
           disabled={creating}
-          style={{ width: "100%", padding: "0.625rem 0.875rem", border: "1px solid #e5e5e5", borderRadius: "0.5rem", fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }}
+          style={inputStyle}
         />
+      </div>
+
+      <div style={{ marginBottom: "1.25rem" }}>
+        <label style={labelStyle}>Info To Collect At Check-in</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", padding: "0.875rem", border: "1px solid #e5e5e5", borderRadius: "0.5rem", backgroundColor: "#fafafa" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <input type="checkbox" checked disabled style={{ accentColor: "#000000" }} />
+            <span style={{ fontSize: "0.85rem", color: "#333333" }}>
+              Full Name <span style={{ color: "#aaaaaa" }}>(always collected)</span>
+            </span>
+          </div>
+          {FIELD_PRESETS.map((preset) => {
+            const checked = selectedPresets.includes(preset.key);
+            const disabled = creating || (atMax && !checked);
+            return (
+              <label key={preset.key} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", color: disabled && !checked ? "#bbbbbb" : "#333333", cursor: disabled ? "not-allowed" : "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={() => togglePreset(preset.key)}
+                  style={{ accentColor: "#000000" }}
+                />
+                {preset.label}
+              </label>
+            );
+          })}
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", color: creating || (atMax && !useCustomField) ? "#bbbbbb" : "#333333", cursor: creating || (atMax && !useCustomField) ? "not-allowed" : "pointer" }}>
+            <input
+              type="checkbox"
+              checked={useCustomField}
+              disabled={creating || (atMax && !useCustomField)}
+              onChange={toggleCustom}
+              style={{ accentColor: "#000000" }}
+            />
+            Custom field
+          </label>
+          {useCustomField && (
+            <input
+              type="text"
+              value={customFieldLabel}
+              onChange={(e) => setCustomFieldLabel(e.target.value)}
+              placeholder="e.g. Department"
+              disabled={creating}
+              maxLength={40}
+              style={{ ...inputStyle, marginTop: "0.125rem" }}
+              onFocus={(e) => (e.target.style.borderColor = "#000000")}
+              onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")}
+            />
+          )}
+        </div>
+        <p style={{ margin: "0.375rem 0 0", fontSize: "0.72rem", color: "#aaaaaa" }}>
+          Pick up to {MAX_EXTRA_FIELDS} additional fields (3 total, including name).
+        </p>
       </div>
 
       <motion.button
@@ -211,7 +333,7 @@ function JoinSessionForm() {
     setError(null);
 
     try {
-      // 1. Check IndexedDB first (fast, no network)
+      // 1. Check IndexedDB first (fast, no network, no Redis request spent)
       const localSession = await getSession(key);
 
       if (localSession) {
@@ -458,6 +580,7 @@ export default function StartPage() {
           {/* Forms */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem", marginBottom: "3rem" }}>
             <CreateSessionForm onCreated={loadSessions} />
+            {/* <JoinSessionForm /> */}
           </div>
 
           {/* My Sessions History */}

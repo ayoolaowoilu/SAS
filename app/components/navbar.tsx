@@ -11,6 +11,7 @@ export default function Navbar() {
     { label: 'Features', href: '/features' },
     { label: 'Start session', href: '/start' },
     { label: 'join session', href: '/join-session' },
+    {label: 'Latest Updates', href: '/updates' },
 
   ];
 

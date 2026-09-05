@@ -5,8 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "../../components/navbar";
 import { getRedisData, addRedisData } from "../../lib/redis";
-import {  saveSession, getSession, deleteSession } from "../../lib/indexdb";
+import { saveSession, getSession } from "../../lib/indexdb";
 
+interface FieldDef {
+  key: string;
+  label: string;
+}
 
 interface Session {
   id: string;
@@ -14,19 +18,42 @@ interface Session {
   startedAt: number;
   durationMs: number;
   expected: number;
-  attended: number;
+  attended: Attendee[];
   status: "active" | "ended";
   classKey: string;
+  fields: FieldDef[];
 }
 
 interface Attendee {
-  name: string;
-  regNo: string;
-  checkedInAt: number;
   id: string;
+  values: Record<string, string>;
+  checkedInAt: number;
 }
 
+const DEFAULT_FIELDS: FieldDef[] = [{ key: "name", label: "Full Name" }];
 
+// Which field acts as the "business key" for duplicate detection / cross-device merge.
+// Prefer a unique-ish identifier (reg no / email / phone) over a free-text name.
+function getUniqueFieldKey(fields: FieldDef[] | undefined): string {
+  const list = fields && fields.length ? fields : DEFAULT_FIELDS;
+  const priority = ["regNo", "email", "phone"];
+  for (const p of priority) {
+    if (list.some((f) => f.key === p)) return p;
+  }
+  return list[0].key;
+}
+
+function getFields(session: Session): FieldDef[] {
+  return session.fields && session.fields.length ? session.fields : DEFAULT_FIELDS;
+}
+
+/* ── Redis usage tuning ──
+   Attendees now live INSIDE the session record (one Redis key instead of two),
+   so every sync is a single GET/SET. Reads prefer IndexedDB first and only
+   touch Redis when necessary, throttled to avoid back-to-back calls. */
+const LOCAL_POLL_MS = 5000;
+const REDIS_SYNC_EVERY_N_POLLS = 6; // ~30s between cross-device Redis syncs
+const MIN_REDIS_GAP_MS = 8000;
 
 function formatDuration(ms: number): string {
   const hours = Math.floor(ms / (1000 * 60 * 60));
@@ -60,7 +87,6 @@ function formatDateTime(timestamp: number): string {
 function generateAttendeeId(): string {
   return "att_" + Math.random().toString(36).substring(2, 10);
 }
-
 
 function downloadAttendancePDF(session: Session, attendees: Attendee[]) {
   const { jsPDF } = require("jspdf");
@@ -98,13 +124,26 @@ function downloadAttendancePDF(session: Session, attendees: Attendee[]) {
   doc.text("Attendees", margin, y);
   y += 8;
 
+  const fields = getFields(session);
+  const usableWidth = pageWidth - margin * 2;
+  const hashW = 12;
+  const numDataCols = fields.length + 1; // + Checked In column
+  const colWidth = (usableWidth - hashW) / numDataCols;
+
+  const colX: number[] = [];
+  let cursor = margin + hashW;
+  fields.forEach(() => {
+    colX.push(cursor);
+    cursor += colWidth;
+  });
+  const checkinX = cursor;
+
   doc.setFontSize(10);
   doc.setFillColor(240, 240, 240);
-  doc.rect(margin, y - 5, pageWidth - margin * 2, 8, "F");
+  doc.rect(margin, y - 5, usableWidth, 8, "F");
   doc.text("#", margin + 3, y);
-  doc.text("Name", margin + 20, y);
-  doc.text("Reg No", margin + 80, y);
-  doc.text("Check-in Time", margin + 130, y);
+  fields.forEach((f, i) => doc.text(f.label, colX[i] + 2, y));
+  doc.text("Checked In", checkinX + 2, y);
   y += 8;
 
   doc.setFont("helvetica", "normal");
@@ -114,9 +153,11 @@ function downloadAttendancePDF(session: Session, attendees: Attendee[]) {
       y = margin + 10;
     }
     doc.text(String(index + 1), margin + 3, y);
-    doc.text(attendee.name, margin + 20, y);
-    doc.text(attendee.regNo, margin + 80, y);
-    doc.text(formatDateTime(attendee.checkedInAt), margin + 130, y);
+    fields.forEach((f, i) => {
+      const val = attendee.values?.[f.key] ?? "";
+      doc.text(String(val).slice(0, 28), colX[i] + 2, y);
+    });
+    doc.text(formatDateTime(attendee.checkedInAt), checkinX + 2, y);
     y += 6;
   });
 
@@ -124,6 +165,7 @@ function downloadAttendancePDF(session: Session, attendees: Attendee[]) {
 }
 
 function downloadAttendanceJSON(session: Session, attendees: Attendee[]) {
+  const fields = getFields(session);
   const data = {
     session: {
       id: session.id,
@@ -136,14 +178,17 @@ function downloadAttendanceJSON(session: Session, attendees: Attendee[]) {
       status: session.status,
       classKey: session.classKey,
       attendanceRate: `${session.expected > 0 ? Math.round((attendees.length / session.expected) * 100) : 0}%`,
+      fields: fields.map((f) => f.label),
     },
-    attendees: attendees.map((a, i) => ({
-      serialNo: i + 1,
-      name: a.name,
-      regNo: a.regNo,
-      checkedInAt: new Date(a.checkedInAt).toISOString(),
-      id: a.id,
-    })),
+    attendees: attendees.map((a, i) => {
+      const row: Record<string, any> = { serialNo: i + 1 };
+      fields.forEach((f) => {
+        row[f.key] = a.values?.[f.key] ?? "";
+      });
+      row.checkedInAt = new Date(a.checkedInAt).toISOString();
+      row.id = a.id;
+      return row;
+    }),
     generatedAt: new Date().toISOString(),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -154,7 +199,6 @@ function downloadAttendanceJSON(session: Session, attendees: Attendee[]) {
   a.click();
   URL.revokeObjectURL(url);
 }
-
 
 
 function NoSessionPopup({ onGoHome }: { onGoHome: () => void }) {
@@ -247,6 +291,7 @@ function ManagerView({
   const attendanceRate = session.expected > 0 ? Math.round((attendees.length / session.expected) * 100) : 0;
   const endAt = session.startedAt + session.durationMs;
   const [timeLeft, setTimeLeft] = useState(formatTimeLeft(endAt));
+  const fields = getFields(session);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -456,8 +501,9 @@ function ManagerView({
           <div style={{ border: "1px solid #f0f0f0", borderRadius: "0.625rem", overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.625rem 1.25rem", borderBottom: "1px solid #f0f0f0", backgroundColor: "#fafafa" }}>
               <div style={{ width: "40px", fontSize: "0.7rem", fontWeight: 600, color: "#aaaaaa", textTransform: "uppercase", letterSpacing: "0.05em" }}>#</div>
-              <div style={{ flex: 2, fontSize: "0.7rem", fontWeight: 600, color: "#aaaaaa", textTransform: "uppercase", letterSpacing: "0.05em" }}>Name</div>
-              <div style={{ flex: 1, fontSize: "0.7rem", fontWeight: 600, color: "#aaaaaa", textTransform: "uppercase", letterSpacing: "0.05em" }}>Reg No</div>
+              {fields.map((f) => (
+                <div key={f.key} style={{ flex: 1, fontSize: "0.7rem", fontWeight: 600, color: "#aaaaaa", textTransform: "uppercase", letterSpacing: "0.05em" }}>{f.label}</div>
+              ))}
               <div style={{ width: "140px", textAlign: "right", fontSize: "0.7rem", fontWeight: 600, color: "#aaaaaa", textTransform: "uppercase", letterSpacing: "0.05em" }}>Checked In</div>
             </div>
 
@@ -473,8 +519,11 @@ function ManagerView({
                   whileHover={{ backgroundColor: "#fafafa" }}
                 >
                   <div style={{ width: "40px", fontSize: "0.8rem", fontWeight: 600, color: "#aaaaaa", fontFamily: "monospace" }}>{index + 1}</div>
-                  <div style={{ flex: 2, fontSize: "0.88rem", fontWeight: 500, color: "#000000" }}>{attendee.name}</div>
-                  <div style={{ flex: 1, fontSize: "0.82rem", fontWeight: 500, color: "#333333", fontFamily: "monospace" }}>{attendee.regNo}</div>
+                  {fields.map((f) => (
+                    <div key={f.key} style={{ flex: 1, fontSize: "0.88rem", fontWeight: 500, color: "#000000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {attendee.values?.[f.key] || "—"}
+                    </div>
+                  ))}
                   <div style={{ width: "140px", textAlign: "right", fontSize: "0.78rem", color: "#888888" }}>{formatDateTime(attendee.checkedInAt)}</div>
                 </motion.div>
               ))}
@@ -496,12 +545,12 @@ function AttendeeView({
 }: {
   session: Session;
   hasCheckedIn: boolean;
-  onCheckIn: (name: string, regNo: string) => void;
+  onCheckIn: (values: Record<string, string>) => void;
   checkingIn: boolean;
   checkInError: string | null;
 }) {
-  const [name, setName] = useState("");
-  const [regNo, setRegNo] = useState("");
+  const fields = getFields(session);
+  const [values, setValues] = useState<Record<string, string>>({});
   const endAt = session.startedAt + session.durationMs;
   const [timeLeft, setTimeLeft] = useState(formatTimeLeft(endAt));
 
@@ -510,10 +559,22 @@ function AttendeeView({
     return () => clearInterval(interval);
   }, [endAt]);
 
+  const handleChange = (key: string, raw: string) => {
+    const val = key === "regNo" ? raw.toUpperCase() : raw;
+    setValues((prev) => ({ ...prev, [key]: val }));
+  };
+
+  const allFilled = fields.every((f) => (values[f.key] || "").trim().length > 0);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !regNo.trim()) return;
-    onCheckIn(name.trim(), regNo.trim().toUpperCase());
+    const trimmed: Record<string, string> = {};
+    for (const f of fields) {
+      const v = (values[f.key] || "").trim();
+      if (!v) return;
+      trimmed[f.key] = f.key === "regNo" ? v.toUpperCase() : v;
+    }
+    onCheckIn(trimmed);
   };
 
   return (
@@ -567,18 +628,34 @@ function AttendeeView({
         ) : (
           <form onSubmit={handleSubmit} className="text-black" style={{ border: "1px solid #f0f0f0", borderRadius: "0.875rem", padding: "1.5rem" }}>
             <h3 style={{ margin: "0 0 1rem 0", fontSize: "1rem", fontWeight: 700, color: "#000000" }}>Check In</h3>
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#333333", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>Full Name</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter your full name" disabled={checkingIn} required
-                style={{ width: "100%", padding: "0.625rem 0.875rem", border: "1px solid #e5e5e5", borderRadius: "0.5rem", fontSize: "0.9rem", outline: "none", boxSizing: "border-box", transition: "border-color 0.2s", opacity: checkingIn ? 0.6 : 1 }}
-                onFocus={(e) => (e.target.style.borderColor = "#000000")} onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")} />
-            </div>
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#333333", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>Registration Number</label>
-              <input type="text" value={regNo} onChange={(e) => setRegNo(e.target.value.toUpperCase())} placeholder="e.g. REG2024001" disabled={checkingIn} required
-                style={{ width: "100%", padding: "0.625rem 0.875rem", border: "1px solid #e5e5e5", borderRadius: "0.5rem", fontSize: "0.9rem", outline: "none", boxSizing: "border-box", transition: "border-color 0.2s", fontFamily: "monospace", letterSpacing: "0.03em", opacity: checkingIn ? 0.6 : 1 }}
-                onFocus={(e) => (e.target.style.borderColor = "#000000")} onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")} />
-            </div>
+            {fields.map((f) => (
+              <div key={f.key} style={{ marginBottom: "1rem" }}>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#333333", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>{f.label}</label>
+                <input
+                  type={f.key === "email" ? "email" : "text"}
+                  value={values[f.key] || ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  placeholder={`Enter your ${f.label.toLowerCase()}`}
+                  disabled={checkingIn}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "0.625rem 0.875rem",
+                    border: "1px solid #e5e5e5",
+                    borderRadius: "0.5rem",
+                    fontSize: "0.9rem",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    transition: "border-color 0.2s",
+                    fontFamily: f.key === "regNo" ? "monospace" : "inherit",
+                    letterSpacing: f.key === "regNo" ? "0.03em" : "normal",
+                    opacity: checkingIn ? 0.6 : 1,
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#000000")}
+                  onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")}
+                />
+              </div>
+            ))}
             <AnimatePresence>
               {checkInError && (
                 <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
@@ -588,10 +665,10 @@ function AttendeeView({
                 </motion.div>
               )}
             </AnimatePresence>
-            <motion.button type="submit" disabled={checkingIn || !name.trim() || !regNo.trim()}
-              whileHover={checkingIn || !name.trim() || !regNo.trim() ? {} : { scale: 1.02, y: -1 }}
-              whileTap={checkingIn || !name.trim() || !regNo.trim() ? {} : { scale: 0.98 }}
-              style={{ width: "100%", padding: "0.75rem", backgroundColor: "#000000", color: "#ffffff", fontSize: "0.9rem", fontWeight: 600, borderRadius: "0.5rem", border: "none", cursor: checkingIn || !name.trim() || !regNo.trim() ? "not-allowed" : "pointer", opacity: checkingIn || !name.trim() || !regNo.trim() ? 0.6 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+            <motion.button type="submit" disabled={checkingIn || !allFilled}
+              whileHover={checkingIn || !allFilled ? {} : { scale: 1.02, y: -1 }}
+              whileTap={checkingIn || !allFilled ? {} : { scale: 0.98 }}
+              style={{ width: "100%", padding: "0.75rem", backgroundColor: "#000000", color: "#ffffff", fontSize: "0.9rem", fontWeight: 600, borderRadius: "0.5rem", border: "none", cursor: checkingIn || !allFilled ? "not-allowed" : "pointer", opacity: checkingIn || !allFilled ? 0.6 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
               {checkingIn ? (
                 <>
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} style={{ width: "14px", height: "14px", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#ffffff", borderRadius: "50%" }} />
@@ -632,6 +709,15 @@ export default function SessionPage() {
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isPollingRef = useRef(false);
+  const lastRedisFetchRef = useRef(0);
+
+  // Throttle guard: refuses a Redis call if one just happened, unless forced.
+  const canHitRedis = useCallback((force = false) => {
+    const now = Date.now();
+    if (!force && now - lastRedisFetchRef.current < MIN_REDIS_GAP_MS) return false;
+    lastRedisFetchRef.current = now;
+    return true;
+  }, []);
 
   const checkIsManager = useCallback(() => {
     if (typeof window === "undefined") return false;
@@ -653,154 +739,77 @@ export default function SessionPage() {
     } catch { return false; }
   }, [classKey]);
 
-
- const fetchSession = useCallback(async (): Promise<Session | null> => {
+  /* Local-first session load. Redis is only touched when nothing is cached
+     locally yet (e.g. a brand-new device joining a session). */
+  const fetchSession = useCallback(async (): Promise<Session | null> => {
     if (!classKey) return null;
 
-    // Try Redis FIRST
+    try {
+      const local = await getSession(classKey);
+      if (local) return local as any;
+    } catch (err) {
+      console.error("[Session] IndexedDB read error:", err);
+    }
+
+    if (!canHitRedis()) return null;
     try {
       const data = await getRedisData(classKey);
       if (data) {
-        let parsed: unknown;
-        if (typeof data === "string") {
-          try { parsed = JSON.parse(data); } catch { parsed = data; }
-        } else {
-          parsed = data;
-        }
-
+        const parsed = typeof data === "string" ? (() => { try { return JSON.parse(data); } catch { return data; } })() : data;
         if (parsed && typeof parsed === "object" && "id" in parsed) {
-          const sessionData: any = parsed as Session;
-          // Cache to IndexedDB for offline future access
-          try { await saveSession(sessionData); } catch (error) { console.log(error); }
-          return sessionData;
+          try { await saveSession(parsed as Session); } catch (e) { console.log(e); }
+          return parsed as Session;
         }
       }
     } catch (err) {
       console.error("[Session] Fetch session from Redis error:", err);
     }
-
-    // Fallback to IndexedDB if Redis failed or returned nothing
-    try {
-      const localData: any = await getSession(classKey);
-      if (localData) return localData as Session;
-    } catch (err) {
-      console.error("[Session] Fetch session from IndexedDB error:", err);
-    }
-
     return null;
-  }, [classKey]);
-  
-  const fetchAttendees = useCallback(async (): Promise<Attendee[]> => {
-    if (!classKey) return [];
-     if(!checkIsManager()) return [];
-     if(session?.status === "ended") return [];
+  }, [classKey, canHitRedis]);
 
-   
-    try {
-      const localAttendees:any = await getSession(classKey)
-      return localAttendees.attended;
-
-    } catch (err) {
-      console.error("[Session] Fetch attendees from IndexedDB error:", err);
-      return [];
-    }
-  }, [classKey]);
-
- 
-const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
-    if (!classKey) return [];
-    if (!checkIsManager()) return [];
-      if(session?.status === "ended") return [];
+  /* Single combined GET that carries both session state AND attendees
+     (attendees now live on session.attended in Redis — no second key).
+     Merges with whatever is cached locally so a check-in made on this
+     device is never clobbered by a slightly-behind Redis snapshot. */
+  const syncSessionFromRedis = useCallback(async (force = false): Promise<Session | null> => {
+    if (!classKey) return null;
+    if (!canHitRedis(force)) return null;
 
     try {
-      const redisData = await getRedisData(`${classKey}:attendees`);
-      if (!redisData) return [];
+      const raw = await getRedisData(classKey);
+      if (!raw) return null;
+      const remote = (typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw) as Session | null;
+      if (!remote || typeof remote !== "object" || !("id" in remote)) return null;
 
-      let parsed: unknown;
-      if (typeof redisData === "string") {
-        try { parsed = JSON.parse(redisData); } catch { parsed = redisData; }
-      } else {
-        parsed = redisData;
-      }
+      let local: Session | null = null;
+      try { local = (await getSession(classKey)) as any; } catch { local = null; }
 
-      let redisAttendees: Attendee[] = [];
-      if (Array.isArray(parsed)) {
-        redisAttendees = parsed as Attendee[];
-      } else if (parsed && typeof parsed === "object" && "attendees" in parsed && Array.isArray((parsed as any).attendees)) {
-        redisAttendees = (parsed as any).attendees as Attendee[];
-      }
+      const fields = remote.fields || local?.fields || DEFAULT_FIELDS;
+      const uniqueKey = getUniqueFieldKey(fields);
 
-      if (redisAttendees.length === 0) return [];
+      const localAttended: Attendee[] = local?.attended || [];
+      const remoteAttended: Attendee[] = remote.attended || [];
 
-      // Get local attendees from IndexedDB
-      const localSession: any = await getSession(classKey);
-      let localAttendees: Attendee[] = [];
-      try {
-        localAttendees = localSession?.attended || [];
-      } catch {
-        localAttendees = JSON.parse(localSession)?.attended || [];
-      }
-
-      // DEDUPLICATE: merge by regNo (business key), keep earliest check-in
       const mergedMap = new Map<string, Attendee>();
-
-      // Add local attendees first
-      for (const a of localAttendees) {
-        const key = a.regNo.toUpperCase();
-        mergedMap.set(key, a);
+      for (const a of localAttended) {
+        mergedMap.set(String(a.values?.[uniqueKey] ?? a.id).toUpperCase(), a);
       }
-
-      // Add Redis attendees — if duplicate regNo, keep the one with earliest checkedInAt
-      for (const a of redisAttendees) {
-        const key = a.regNo.toUpperCase();
+      for (const a of remoteAttended) {
+        const key = String(a.values?.[uniqueKey] ?? a.id).toUpperCase();
         const existing = mergedMap.get(key);
-        if (!existing) {
-          mergedMap.set(key, a);
-        } else if (a.checkedInAt < existing.checkedInAt) {
-          mergedMap.set(key, a); // Redis has earlier check-in, use it
-        }
-
-        // If local is earlier, keep local (do nothing)
+        if (!existing || a.checkedInAt < existing.checkedInAt) mergedMap.set(key, a);
       }
+      const mergedAttended = Array.from(mergedMap.values()).sort((a, b) => a.checkedInAt - b.checkedInAt);
 
-      const newAttendees = Array.from(mergedMap.values());
-      // Sort by check-in time to maintain order
-      newAttendees.sort((a, b) => a.checkedInAt - b.checkedInAt);
+      const mergedSession: Session = { ...remote, attended: mergedAttended };
 
-      // Only save if there are actual changes
-      const localJson = JSON.stringify(localAttendees);
-      const mergedJson = JSON.stringify(newAttendees);
-      if (localJson !== mergedJson) {
-        const session = await fetchSession();
-        if (session) {
-          await deleteSession(classKey);
-          await saveSession({ ...session, attended: newAttendees });
-        }
-      }
-
-      return newAttendees;
+      try { await saveSession(mergedSession); } catch (e) { console.log(e); }
+      return mergedSession;
     } catch (err) {
-      console.error("[Session] Sync attendees from Redis error:", err);
-      return [];
+      console.error("[Session] Redis sync error:", err);
+      return null;
     }
-  }, [classKey, checkIsManager, fetchSession]);
-
-
-  const saveAttendeesToBoth = useCallback(async (newAttendees: Attendee[]) => {
-    if (!classKey) return;
-
-    // // Save to IndexedDB FIRST (primary local storage)
-    // await saveAttendees(classKey, newAttendees);
-
-    // // Save to Redis (for cross-device sync) - fire and forget
-    try {
-      const payload = { attendees: newAttendees, classKey, updatedAt: Date.now() };
-      await addRedisData(payload, `${classKey}:attendees`, 86400 * 7);
-    } catch (err) {
-      console.error("[Session] Redis save attendees error:", err);
-    }
-  }, [classKey]);
-
+  }, [classKey, canHitRedis]);
 
   useEffect(() => {
     let cancelled = false;
@@ -808,138 +817,107 @@ const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
       setLoading(true);
       setNoSession(false);
 
-      const sess = await fetchSession();
+      let sess = await fetchSession();
       if (cancelled) return;
       if (!sess) { setNoSession(true); setLoading(false); return; }
 
-      setSession(sess);
-      setIsManager(checkIsManager());
+      const manager = checkIsManager();
+      setIsManager(manager);
       setHasCheckedIn(checkHasCheckedIn());
 
-
-      const isUserManager = checkIsManager();
-      if (isUserManager) {
-        await syncAttendeesFromRedis();
+      if (manager) {
+        const synced = await syncSessionFromRedis(true);
+        if (synced) sess = synced;
       }
 
-      const atts = await fetchAttendees();
       if (cancelled) return;
-      setAttendees(atts);
+      setSession(sess);
+      setAttendees(sess.attended || []);
       setLoading(false);
     }
     init();
     return () => { cancelled = true; };
-  }, [fetchSession, fetchAttendees, syncAttendeesFromRedis, checkIsManager, checkHasCheckedIn]);
+  }, [fetchSession, syncSessionFromRedis, checkIsManager, checkHasCheckedIn]);
 
   useEffect(() => {
-    
     if (noSession || !session || !isManager || isPollingRef.current) return;
 
     isPollingRef.current = true;
-
-    // Poll every 3 seconds - read from IndexedDB (fast, no network)
-    // Sync from Redis every 15 seconds (less frequent network call)
-    let redisSyncCounter = 0;
+    let pollCount = 0;
 
     pollIntervalRef.current = setInterval(async () => {
       try {
-        // Always read from IndexedDB first (fast, no network)
-        let localAttendees:any;
-        const session_data:any = 
-            await getSession(classKey);
-         
-        try{
-             localAttendees = session_data.attended
-        }catch{
-             localAttendees  = JSON.parse(session_data).attended
-        }
+        pollCount++;
 
-        setAttendees((prev:any) => {
-          const prevJson = JSON.stringify(prev);
-          const newJson = JSON.stringify(localAttendees);
-          return prevJson !== newJson ? localAttendees : prev;
-        });
-
-        // Sync from Redis every 5th poll (15 seconds) to get cross-device updates
-        redisSyncCounter++;
-        if (redisSyncCounter >= 5) {
-          redisSyncCounter = 0;
-          const redisAttendees = await syncAttendeesFromRedis();
-
-          // If Redis has more data, update state
-          if (redisAttendees.length > 0) {
-            setAttendees(prev => {
-              const prevJson = JSON.stringify(prev);
-              const newJson = JSON.stringify(redisAttendees);
-              return prevJson !== newJson ? redisAttendees : prev;
-            });
-          }
-        }
-
-        // Refresh session status from IndexedDB
-        const sess = await getSession(classKey);
-        if (sess) {
-          setSession((prev:any) => {
-            const prevJson = JSON.stringify(prev);
-            const newJson = JSON.stringify(sess);
-            return prevJson !== newJson ? sess : prev;
+        // Cheap local read every tick — no network cost.
+        const local = (await getSession(classKey).catch(() => null)) as Session | null;
+        if (local) {
+          setSession((prev) => (JSON.stringify(prev) !== JSON.stringify(local) ? local : prev));
+          setAttendees((prev) => {
+            const next = local.attended || [];
+            return JSON.stringify(prev) !== JSON.stringify(next) ? next : prev;
           });
+        }
+
+        // Only hit Redis every Nth tick, to catch cross-device check-ins
+        // without spending a request every 3-5 seconds.
+        if (pollCount % REDIS_SYNC_EVERY_N_POLLS === 0) {
+          const synced = await syncSessionFromRedis();
+          if (synced) {
+            setSession(synced);
+            setAttendees(synced.attended || []);
+          }
         }
       } catch (err) {
         console.error("[Session] Polling error:", err);
       }
-    }, 3000);
+    }, LOCAL_POLL_MS);
 
     return () => {
-      if (pollIntervalRef.current) { 
-        clearInterval(pollIntervalRef.current); 
-        pollIntervalRef.current = null; 
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       }
       isPollingRef.current = false;
     };
-  }, [noSession, session, isManager, classKey, syncAttendeesFromRedis]);
+  }, [noSession, session, isManager, classKey, syncSessionFromRedis]);
 
   /* ── Handle Check In ── */
-  const handleCheckIn = useCallback(async (name: string, regNo: string) => {
+  const handleCheckIn = useCallback(async (values: Record<string, string>) => {
     if (!session || !classKey) return;
     setCheckingIn(true);
     setCheckInError(null);
 
     try {
-      // Read latest from IndexedDB (primary source)
+      const latest = (await getSession(classKey).catch(() => null)) as Session | null;
+      const currentAttendees: Attendee[] = latest?.attended || session.attended || [];
 
-         let currentAttendees:any;
-        const session_data:any = 
-            await getSession(classKey);
-         
-        try{
-             currentAttendees = session_data.attended
-        }catch{
-             currentAttendees = JSON.parse(session_data).attended
-        }
-      
-
-      const alreadyExists = currentAttendees.some((a:any) => a.regNo.toUpperCase() === regNo.toUpperCase());
+      const uniqueKey = getUniqueFieldKey(session.fields);
+      const newKeyVal = (values[uniqueKey] || "").toUpperCase();
+      const alreadyExists = currentAttendees.some((a) => String(a.values?.[uniqueKey] || "").toUpperCase() === newKeyVal);
       if (alreadyExists) {
-        setCheckInError("Someone with this registration number has already checked in.");
+        const label = getFields(session).find((f) => f.key === uniqueKey)?.label.toLowerCase() || "detail";
+        setCheckInError(`Someone with this ${label} has already checked in.`);
         setCheckingIn(false);
         return;
       }
 
-      const newAttendee: Attendee = { 
-        name, 
-        regNo: regNo.toUpperCase(), 
-        checkedInAt: Date.now(), 
-        id: generateAttendeeId() 
-      };
+      const newAttendee: Attendee = { id: generateAttendeeId(), values, checkedInAt: Date.now() };
       const updatedAttendees = [...currentAttendees, newAttendee];
+      const updatedSession: Session = { ...(latest || session), attended: updatedAttendees };
 
-      // Save to IndexedDB and Redis
-      await saveAttendeesToBoth(updatedAttendees);
+      // One write covers both the local cache and cross-device sync —
+      // no more separate "<key>:attendees" Redis record.
+      await saveSession(updatedSession);
+      try {
+        await addRedisData(updatedSession, classKey, Math.floor(updatedSession.durationMs / 1000));
+      } catch (err) {
+        console.error("[Session] Redis save attendee error:", err);
+      }
 
+      setSession(updatedSession);
       setAttendees(updatedAttendees);
 
-      // Mark as checked in locally
       if (typeof window !== "undefined") {
         const myAttended = localStorage.getItem("myAttended");
         let attendedList: string[] = [];
@@ -956,7 +934,7 @@ const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
     } finally {
       setCheckingIn(false);
     }
-  }, [session, classKey, saveAttendeesToBoth]);
+  }, [session, classKey]);
 
   /* ── Handle End Session ── */
   const handleEndSession = useCallback(async () => {
@@ -966,13 +944,12 @@ const syncAttendeesFromRedis = useCallback(async (): Promise<Attendee[]> => {
     try {
       const updatedSession: Session = { ...session, status: "ended" };
 
-      
       await saveSession(updatedSession);
 
-      try { 
-        await addRedisData(updatedSession, classKey, Math.floor(session.durationMs / 1000)); 
-      } catch (err) { 
-        console.error("[Session] Redis sync error:", err); 
+      try {
+        await addRedisData(updatedSession, classKey, Math.floor(session.durationMs / 1000));
+      } catch (err) {
+        console.error("[Session] Redis sync error:", err);
       }
 
       setSession(updatedSession);

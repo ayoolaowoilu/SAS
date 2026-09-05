@@ -14,8 +14,8 @@ export default function SASLandingPage() {
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         padding: '2rem 1.5rem', textAlign: 'center', maxWidth: '800px', margin: '0 auto'
       }}>
-        
-        {/* Logo */}
+
+
         <motion.div    className="text-black" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <SASLogo />
           <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>SAS</span>
