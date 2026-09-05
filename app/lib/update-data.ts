@@ -14,7 +14,7 @@ export interface UpdateEntry {
   body: string[]; // full paragraphs, revealed with "Read more"
 }
 
-export const UPDATE_STORAGE_KEY = "sas_last_read_update";
+export const UPDATE_STORAGE_KEY = "sas_last_read_update1.0";
 
 export const UPDATES: UpdateEntry[] = [
   {
