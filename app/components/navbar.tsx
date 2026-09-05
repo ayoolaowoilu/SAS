@@ -44,7 +44,7 @@ export default function Navbar() {
       >
         {/* Logo */}
         <motion.a
-          href="#"
+          href="/"
           style={{
             display: 'flex',
             alignItems: 'center',
