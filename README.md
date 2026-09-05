@@ -1,4 +1,4 @@
-```markdown
+
 # SAS — Smart Attendance System
 
 <p align="center">
