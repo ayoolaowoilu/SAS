@@ -68,7 +68,7 @@ export default function SASLandingPage() {
          
           <div style={{ flex: 1, minWidth: '200px' }}>
             <div style={{ fontSize: '0.72rem', color: '#aaaaaa', marginBottom: '0.125rem' }}>
-              {latest.tag} · {latest.date}
+              {"Latest Update"} · {latest.date}
             </div>
             <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#000000', marginBottom: '0.125rem' }}>
               {latest.title}
