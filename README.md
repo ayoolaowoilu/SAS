@@ -1,7 +1,8 @@
-# 🎯 SAS — Smart Attendance System
+```markdown
+# SAS — Smart Attendance System
 
 <p align="center">
-  <img src="https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=1200&q=80" alt="SAS Banner" width="100%" style="border-radius: 8px;" />
+  <img src="./public/logo.svg" alt="SAS Logo" width="120" height="120" />
 </p>
 
 <p align="center">
@@ -17,13 +18,13 @@
 
 ---
 
-## ✨ Overview
+## Overview
 
-**SAS (Smart Attendance System)** is a streamlined web application engineered to eliminate the friction of traditional roll calls. Whether you're managing a classroom, a corporate team, or workshop sessions, SAS gives you real-time tracking, seamless session management, and instant analytics with type-safe reliability.
+**SAS (Smart Attendance System)** is a streamlined web application engineered to eliminate the friction of traditional roll calls. Whether you are managing a classroom, a corporate team, or workshop sessions, SAS gives you real-time tracking, seamless session management, and instant analytics with type-safe reliability.
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 * **Instant Session Joining:** Attendees can join active sessions with a single tap or click.
 * **Real-time Tracking:** Monitor check-ins live as they happen without page refreshes.
@@ -33,15 +34,15 @@
 
 ---
 
-## 📸 Preview
+## Preview
 
 <p align="center">
-  <img src="https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1000&q=80" alt="SAS Dashboard Preview" width="100%" style="border-radius: 8px;" />
+  <img src="./public/screenshot.png" alt="SAS Dashboard Preview" width="100%" style="border-radius: 8px;" />
 </p>
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 * **Frontend:** React, TypeScript
 * **Styling:** Tailwind CSS, Framer Motion
@@ -49,7 +50,7 @@
 
 ---
 
-## 🏁 Getting Started
+## Getting Started
 
 Follow these steps to get your local development environment running.
 
@@ -61,43 +62,49 @@ Make sure you have Node.js (v18+) and npm/yarn installed on your machine.
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/smart-attendance-system.git
-   cd smart-attendance-system
-   ```
+   git clone [https://github.com/ayoolaowoilu/sas.git](https://github.com/ayoolaowoilu/sas.git)
+   cd sas
+
+```
 
 2. **Install dependencies**
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
+```bash
+npm install
+# or
+yarn install
+
+```
+
 
 3. **Run the development server**
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   ```
+```bash
+npm run dev
+# or
+yarn dev
+
+```
+
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser to view the app.
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
+├── public/           # Static assets (including image.svg logo)
 ├── components/       # Reusable UI components (Cards, Modals, Navbars)
 ├── pages / app/      # Application routes and views
-├── public/           # Static assets, logos, and icons
 ├── styles/           # Global styles and Tailwind configs
 └── types/            # TypeScript interfaces and type definitions
+
 ```
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/your-username/smart-attendance-system/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
@@ -107,10 +114,6 @@ Contributions, issues, and feature requests are welcome! Feel free to check the 
 
 ---
 
-## 📝 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
-
-<p align="center">
-  Made with 💻 and ☕ by the SAS team.
-</p>
