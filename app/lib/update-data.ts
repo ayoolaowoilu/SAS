@@ -16,7 +16,7 @@ export const UPDATES: UpdateEntry[] = [
     tag: "Mobile + Sharing",
     title: "Mobile overhaul & QR code sharing",
     summary:
-      "SAS is now fully mobile-friendly — a scrollable attendee table, compact controls — and sharing a session takes one tap with a built-in QR code.",
+      "SAS is now fully mobile-friendly  a scrollable attendee table, compact controls and sharing a session takes one tap with a built-in QR code.",
     body: [
       "SAS was built desktop-first, and it showed. On phones, the attendee table squeezed its columns into each other, buttons overlapped the class key, and the whole dashboard felt cramped.",
       "This update reworks the entire mobile experience. The attendees table now scrolls sideways instead of squashing, every button and card is more compact, and page margins shrink so far more fits on a small screen. Nothing changed on desktop.",

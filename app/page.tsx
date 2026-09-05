@@ -63,7 +63,7 @@ export default function SASLandingPage() {
   );
 }
 
-// Reusable Button Component for cleaner code
+
 function Button({ children, onClick, primary }: { children: React.ReactNode, onClick: () => void, primary?: boolean }) {
   return (
     <motion.button
