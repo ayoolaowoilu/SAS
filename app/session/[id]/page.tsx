@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { QRCodeCanvas } from "qrcode.react";
 import Navbar from "../../components/navbar";
 import { getRedisData, addRedisData } from "../../lib/redis";
 import { saveSession, getSession } from "../../lib/indexdb";
@@ -241,6 +242,122 @@ function NoSessionPopup({ onGoHome }: { onGoHome: () => void }) {
 }
 
 
+
+function ShareCard({ session }: { session: Session }) {
+  const [shareUrl, setShareUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
+
+  // Set after mount so SSR/hydration never see a mismatched URL.
+  useEffect(() => {
+    setShareUrl(window.location.href);
+  }, []);
+
+  const handleCopyLink = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleDownloadQR = () => {
+    const canvas = qrRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `${session.name.replace(/\s+/g, "_")}_checkin_qr.png`;
+    link.click();
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.05 }}
+      className="share-card"
+      style={{
+        border: "1px solid #f0f0f0",
+        borderRadius: "0.875rem",
+        padding: "1.25rem",
+        backgroundColor: "#ffffff",
+        display: "flex",
+        alignItems: "center",
+        gap: "1.25rem",
+        flexWrap: "wrap",
+      }}
+    >
+      <div
+        ref={qrRef}
+        className="qr-box"
+        style={{ padding: "0.5rem", border: "1px solid #f0f0f0", borderRadius: "0.5rem", backgroundColor: "#ffffff", lineHeight: 0 }}
+      >
+        {shareUrl ? (
+          <QRCodeCanvas value={shareUrl} size={148} bgColor="#ffffff" fgColor="#000000" level="M" />
+        ) : (
+          <div style={{ width: 148, height: 148, backgroundColor: "#fafafa", borderRadius: "0.25rem" }} />
+        )}
+      </div>
+
+      <div style={{ flex: 1, minWidth: "200px" }}>
+        <h3 style={{ margin: "0 0 0.375rem 0", fontSize: "0.95rem", fontWeight: 700, color: "#000000" }}>
+          Share Check-in
+        </h3>
+        <p style={{ margin: "0 0 0.75rem 0", fontSize: "0.8rem", color: "#888888", lineHeight: 1.5 }}>
+          Attendees scan the QR code or open this link to check in.
+        </p>
+        <div
+          title={shareUrl}
+          style={{
+            padding: "0.5rem 0.75rem",
+            backgroundColor: "#f5f5f5",
+            borderRadius: "0.5rem",
+            fontSize: "0.75rem",
+            fontFamily: "monospace",
+            color: "#333333",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            marginBottom: "0.75rem",
+          }}
+        >
+          {shareUrl || "Loading link..."}
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <motion.button
+            onClick={handleCopyLink}
+            disabled={!shareUrl}
+            whileHover={shareUrl ? { scale: 1.02 } : {}}
+            whileTap={shareUrl ? { scale: 0.98 } : {}}
+            className="share-btn"
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.875rem", backgroundColor: "#000000", color: "#ffffff", fontSize: "0.78rem", fontWeight: 600, borderRadius: "0.375rem", border: "none", cursor: shareUrl ? "pointer" : "not-allowed", opacity: shareUrl ? 1 : 0.6 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+            {copied ? "Copied!" : "Copy Link"}
+          </motion.button>
+          <motion.button
+            onClick={handleDownloadQR}
+            disabled={!shareUrl}
+            whileHover={shareUrl ? { scale: 1.02 } : {}}
+            whileTap={shareUrl ? { scale: 0.98 } : {}}
+            className="share-btn"
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.875rem", backgroundColor: "#ffffff", color: "#333333", fontSize: "0.78rem", fontWeight: 600, borderRadius: "0.375rem", border: "1px solid #e5e5e5", cursor: shareUrl ? "pointer" : "not-allowed", opacity: shareUrl ? 1 : 0.6 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Download QR
+          </motion.button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function ManagerView({
   session,
   attendees,
@@ -432,6 +549,9 @@ function ManagerView({
           </div>
         </div>
       </motion.div>
+
+      {/* Share / QR Card */}
+      <ShareCard session={session} />
 
       {/* Attendees List */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
@@ -958,7 +1078,10 @@ export default function SessionPage() {
           .stats-grid > div > div:first-child { font-size: 1.05rem !important; }
           .key-bar { padding: 0.5rem 0.625rem !important; gap: 0.5rem !important; }
           .key-bar span { font-size: 0.72rem !important; }
-          .key-bar button { padding: 0.375rem 0.625rem !important; font-size: 0.68rem !important; gap: 0.25rem !important; }
+          .key-bar button, .share-btn { padding: 0.375rem 0.625rem !important; font-size: 0.68rem !important; gap: 0.25rem !important; }
+          .share-card { padding: 1rem !important; gap: 0.875rem !important; }
+          .qr-box { padding: 0.375rem !important; }
+          .qr-box canvas { width: 118px !important; height: 118px !important; }
           .mgr-actions { gap: 0.375rem !important; width: 100%; }
 
           /* Horizontally scrollable attendees table — columns never squash */
