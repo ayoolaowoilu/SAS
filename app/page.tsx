@@ -65,21 +65,7 @@ export default function SASLandingPage() {
             flexWrap: 'wrap',
           }}
         >
-          <span
-            style={{
-              padding: '0.25rem 0.75rem',
-              backgroundColor: '#f0fff5',
-              borderRadius: '2rem',
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              color: '#008844',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              flexShrink: 0,
-            }}
-          >
-            New
-          </span>
+         
           <div style={{ flex: 1, minWidth: '200px' }}>
             <div style={{ fontSize: '0.72rem', color: '#aaaaaa', marginBottom: '0.125rem' }}>
               {latest.tag} · {latest.date}
